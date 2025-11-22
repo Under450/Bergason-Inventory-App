@@ -660,4 +660,280 @@ const InventoryEditor = () => {
                                                                 <select
                                                                     disabled={isReadOnly}
                                                                     value={item.meterType}
-                                                                    onChange={(e) => updateItem(room.id,
+                                                                    onChange={(e) => updateItem(room.id, item.id, { meterType: e.target.value as MeterType })}
+                                                                    className="w-full text-xs p-1 rounded border bg-white border-slate-200 outline-none"
+                                                                >
+                                                                    {Object.values(MeterType).map(c => <option key={c} value={c}>{c}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        ) : (
+                                                            // STANDARD CLEANLINESS
+                                                            isReadOnly ? (
+                                                                <span className={`inline-block px-2 py-1 text-[10px] font-bold uppercase rounded border ${CLEANLINESS_COLORS[item.cleanliness]}`}>
+                                                                    {item.cleanliness}
+                                                                </span>
+                                                            ) : (
+                                                                <div className="flex flex-col gap-1">
+                                                                    <label className="md:hidden text-[10px] font-bold text-slate-400 uppercase">Cleanliness</label>
+                                                                    <select
+                                                                        value={item.cleanliness}
+                                                                        onChange={(e) => updateItem(room.id, item.id, { cleanliness: e.target.value as Cleanliness })}
+                                                                        className={`w-full text-xs p-1 rounded border-l-4 ${CLEANLINESS_COLORS[item.cleanliness]} bg-white border-slate-200 outline-none`}
+                                                                    >
+                                                                        {Object.values(Cleanliness).map(c => <option key={c} value={c}>{c}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                            )
+                                                        )}
+                                                    </div>
+
+                                                    {/* 5. Photos */}
+                                                    <div className="col-span-2">
+                                                        <div className="flex flex-wrap gap-2 items-start">
+                                                            {item.photos.length > 0 && item.photos.map((pStr, idx) => {
+                                                                const photo = JSON.parse(pStr) as Photo;
+                                                                // Find the global index of this photo
+                                                                const globalIdx = allPhotos.findIndex(p => p.photo.id === photo.id) + 1;
+
+                                                                return (
+                                                                    <a href={`#photo-vault-${globalIdx}`} key={idx} className="flex items-center gap-1 bg-slate-100 hover:bg-bergason-gold hover:text-white px-2 py-1 rounded text-[10px] font-bold text-slate-600 transition-colors border border-slate-200">
+                                                                        <i className="fas fa-camera"></i>
+                                                                        Ref #{globalIdx}
+                                                                    </a>
+                                                                )
+                                                            })}
+                                                            {!isReadOnly && (
+                                                                <label className="w-8 h-8 flex items-center justify-center border border-dashed border-slate-300 text-slate-400 rounded cursor-pointer hover:bg-slate-100 hover:text-bergason-navy transition-colors" title="Add Photo">
+                                                                    <i className="fas fa-plus text-xs"></i>
+                                                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                                                                        if (e.target.files?.[0]) addPhoto(room.id, item.id, e.target.files[0]);
+                                                                    }} />
+                                                                </label>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+
+        {/* 4. DOCUMENTS */}
+        <section className="mt-16 break-inside-avoid">
+            <h3 className="text-sm font-bold uppercase text-bergason-gold tracking-widest mb-6 border-b border-slate-100 pb-2">Documents</h3>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+                {inventory.documents.map(doc => (
+                    <div key={doc.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded shadow-sm">
+                        <div className="flex items-center gap-3">
+                             <div className={`w-8 h-8 flex items-center justify-center rounded ${doc.fileData ? 'bg-red-100 text-red-500' : 'bg-slate-100 text-slate-400'}`}>
+                                <i className="far fa-file-pdf"></i>
+                             </div>
+                             <div>
+                                <div className="font-semibold text-sm text-slate-800">{doc.name}</div>
+                                {doc.uploadDate && <div className="text-[10px] text-slate-400">Uploaded {formatDate(doc.uploadDate)}</div>}
+                             </div>
+                        </div>
+                        <div>
+                             {doc.fileData ? (
+                                 <div className="flex gap-2">
+                                     <a
+                                        href={doc.fileData}
+                                        download={doc.name}
+                                        className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded font-medium text-slate-600"
+                                     >
+                                         Download
+                                     </a>
+                                     {!isReadOnly && (
+                                         <label className="cursor-pointer text-xs bg-white border border-slate-200 hover:border-bergason-gold hover:text-bergason-gold px-3 py-1 rounded font-medium text-slate-400">
+                                            Replace
+                                            <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
+                                         </label>
+                                     )}
+                                 </div>
+                             ) : (
+                                 !isReadOnly && (
+                                     <label className="cursor-pointer text-xs bg-bergason-navy text-white hover:bg-slate-800 px-3 py-1.5 rounded font-bold shadow-sm">
+                                         <i className="fas fa-upload mr-1"></i> Upload
+                                         <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
+                                     </label>
+                                 )
+                             )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </section>
+
+        {/* 5. GUIDANCE & DISCLAIMERS */}
+        <section className="mt-12 break-inside-avoid">
+             <div className="bg-slate-50 p-6 rounded-lg text-xs text-slate-600 text-justify leading-relaxed border border-slate-200 mb-8">
+                 <h4 className="font-bold text-slate-800 uppercase mb-2">Disclaimer</h4>
+                 <div className="whitespace-pre-wrap mb-4">{DISCLAIMER_TEXT}</div>
+
+                 <h4 className="font-bold text-slate-800 uppercase mb-2 mt-6">Guidance Notes to Tenants</h4>
+                 <div className="whitespace-pre-wrap">{GUIDANCE_NOTES}</div>
+             </div>
+        </section>
+
+        {/* 6. SIGNATURES */}
+        <section className="mt-8 border-t-4 border-double border-bergason-gold pt-10 break-inside-avoid">
+            <h3 className="text-sm font-bold uppercase text-bergason-gold tracking-widest mb-6">Declaration & Signatures</h3>
+
+            {/* Declaration Checkbox */}
+            <div className="mb-8 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        disabled={isReadOnly}
+                        checked={inventory.declarationAgreed}
+                        onChange={(e) => updateInventory({ declarationAgreed: e.target.checked })}
+                        className="mt-1 w-5 h-5 accent-bergason-navy"
+                    />
+                    <div className="text-xs text-slate-700 leading-relaxed">
+                        {DECLARATION_TEXT}
+                    </div>
+                </label>
+            </div>
+
+            {/* Tenant Present Checkbox */}
+             <div className="mb-8 flex items-center gap-4">
+                <span className="text-sm font-bold text-slate-700">Was the tenant present during the inspection?</span>
+                <div className="flex gap-2">
+                    <button
+                        disabled={isReadOnly}
+                        onClick={() => updateInventory({ tenantPresent: true })}
+                        className={`px-4 py-1 rounded text-xs font-bold border ${inventory.tenantPresent ? 'bg-bergason-navy text-white' : 'bg-white text-slate-500'}`}
+                    >
+                        YES
+                    </button>
+                    <button
+                        disabled={isReadOnly}
+                        onClick={() => updateInventory({ tenantPresent: false })}
+                        className={`px-4 py-1 rounded text-xs font-bold border ${!inventory.tenantPresent ? 'bg-bergason-navy text-white' : 'bg-white text-slate-500'}`}
+                    >
+                        NO
+                    </button>
+                </div>
+            </div>
+
+            {/* List Existing Signatures */}
+            <div className="space-y-8 mb-8">
+                {inventory.signatures.map(sig => (
+                     <div key={sig.id} className="border-t border-slate-300 pt-2 w-full md:w-1/2">
+                        <div className="relative">
+                            <img src={sig.data} className="h-16 mix-blend-multiply" alt="Signed" />
+                            <div className="absolute top-0 right-0 text-[9px] text-green-600 font-bold border border-green-200 bg-green-50 px-1 rounded">
+                                {formatDateTime(sig.date)}
+                            </div>
+                        </div>
+                        <p className="text-lg font-serif text-slate-800">{sig.name}</p>
+                        <p className="text-[10px] font-bold uppercase text-slate-400">{sig.type} Signature</p>
+                     </div>
+                ))}
+            </div>
+
+            {/* Add New Signature */}
+            {!isReadOnly && (
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <h4 className="text-xs font-bold uppercase text-slate-500 mb-4">Add Signature</h4>
+                    <div className="flex flex-col md:flex-row gap-4 mb-4">
+                        <input
+                            placeholder="Full Name"
+                            value={signerName}
+                            onChange={(e) => setSignerName(e.target.value)}
+                            className="flex-1 p-2 border rounded text-sm"
+                        />
+                        <select
+                            value={signerType}
+                            onChange={(e) => setSignerType(e.target.value as any)}
+                            className="p-2 border rounded text-sm bg-white"
+                        >
+                            <option value="Tenant">Tenant</option>
+                            <option value="Clerk">Inventory Clerk</option>
+                            <option value="Landlord">Landlord</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <SignaturePad
+                        onSave={addSignature}
+                        onClear={() => {}}
+                    />
+                </div>
+            )}
+
+            {/* Lock Button */}
+            {!isLocked && !isPreviewMode && inventory.signatures.length > 0 && inventory.declarationAgreed && (
+                <div className="mt-8 text-center">
+                    <Button
+                        onClick={() => {
+                            if(window.confirm("Are you sure? This will lock the inventory preventing further edits.")) {
+                                updateInventory({ status: 'LOCKED' });
+                            }
+                        }}
+                        className="w-full md:w-auto bg-green-600 hover:bg-green-700"
+                    >
+                        <i className="fas fa-lock mr-2"></i> Lock Inventory
+                    </Button>
+                </div>
+            )}
+
+        </section>
+
+        {/* 7. PHOTO VAULT (APPENDIX) */}
+        {allPhotos.length > 0 && (
+            <section className="mt-20 break-before-page">
+                <div className="text-center py-6 border-b border-slate-200 mb-8">
+                    <h2 className="font-serif text-2xl font-bold text-slate-900 uppercase tracking-widest">Appendix: Photo Schedule</h2>
+                    <p className="text-slate-500 text-sm mt-2">High resolution evidence with digital timestamps</p>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {allPhotos.map((item) => (
+                        <div key={item.photo.id} id={`photo-vault-${item.index}`} className="break-inside-avoid mb-6">
+                            <div className="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                                <a href={item.photo.url} target="_blank" rel="noreferrer">
+                                    <img src={item.photo.url} alt={`Ref ${item.index}`} className="w-full aspect-[4/3] object-cover hover:opacity-90 transition-opacity" />
+                                </a>
+                                <div className="p-3 bg-white">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className="inline-block bg-bergason-navy text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                            Ref #{item.index}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400 font-mono">
+                                            {formatDateTime(item.photo.timestamp)}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs font-bold text-slate-800 truncate">{item.roomName}</div>
+                                    <div className="text-[10px] text-slate-500 truncate">{item.itemName}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        )}
+
+      </div>
+    </div>
+  );
+};
+
+const App = () => {
+  return (
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/inventory/:id" element={<InventoryEditor />} />
+      </Routes>
+    </HashRouter>
+  );
+};
+
+export default App;
