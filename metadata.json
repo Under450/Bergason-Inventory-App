@@ -1,0 +1,7 @@
+{
+  "name": "Bergason Inventory",
+  "description": "Professional property inventory management for Bergason Property Services. Create detailed reports, capture time-stamped photos, and collect digital signatures.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
