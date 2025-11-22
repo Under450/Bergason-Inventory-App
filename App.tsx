@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
-import { Inventory, Room, InventoryItem, Condition, Cleanliness, Photo, Document, HealthSafetyCheck, MeterType, SignatureEntry } from './types';
+import { Inventory, Room, InventoryItem, Condition, Cleanliness, HealthSafetyCheck, MeterType, SignatureEntry } from './types';
+
 import { generateId, formatDate, formatDateTime, compressImage } from './utils';
 import { Button } from './components/Button';
 import { SignaturePad } from './components/SignaturePad';
