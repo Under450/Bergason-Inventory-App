@@ -5,7 +5,8 @@ import { Inventory, Room, InventoryItem, Condition, Cleanliness, HealthSafetyChe
 
 import { generateId, formatDate, formatDateTime, compressImage } from './utils';
 import { Button } from './components/Button';
-import { SignaturePad } from './components/SignaturePad';
+import { PREDEFINED_ROOMS, DEFAULT_ITEMS, METER_ITEMS, KITCHEN_ITEMS, MAJOR_APPLIANCES, REQUIRED_DOCUMENTS_LIST, DISCLAIMER_TEXT, GUIDANCE_NOTES, DECLARATION_TEXT } from './constants';
+
 import { PREDEFINED_ROOMS, DEFAULT_ITEMS, METER_ITEMS, KITCHEN_ITEMS, MAJOR_APPLIANCES, REQUIRED_DOCUMENTS_LIST, CONDITION_COLORS, CLEANLINESS_COLORS, HS_QUESTIONS, DISCLAIMER_TEXT, GUIDANCE_NOTES, DECLARATION_TEXT } from './constants';
 
 // --- Services ---
