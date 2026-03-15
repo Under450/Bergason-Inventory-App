@@ -15,10 +15,14 @@ import {
   REQUIRED_DOCUMENTS_LIST,
   CONDITION_COLORS,
   CLEANLINESS_COLORS,
+  CONDITION_ICONS,
+  CLEANLINESS_ICONS,
   HS_QUESTIONS,
   DISCLAIMER_TEXT,
   GUIDANCE_NOTES,
-  DECLARATION_TEXT
+  DECLARATION_TEXT,
+  PROPERTY_TYPES,
+  getExcludedRooms
 } from './constants';
 
 // --- Services ---
@@ -61,13 +65,46 @@ const BergasonLogo = ({ className = "" }: { className?: string }) => (
 
 const Dashboard = () => {
   const [inventories, setInventories] = useState<Inventory[]>([]);
+  const [showPropertyTypeModal, setShowPropertyTypeModal] = useState(false);
+  const [selectedPropertyType, setSelectedPropertyType] = useState(PROPERTY_TYPES[4].label); // default "1 Bed House"
   const navigate = useNavigate();
 
   useEffect(() => {
     setInventories(getInventories().sort((a, b) => b.dateUpdated - a.dateUpdated));
   }, []);
 
-  const createNew = () => {
+  const createNew = (propertyTypeLabel: string) => {
+    const selectedType = PROPERTY_TYPES.find(t => t.label === propertyTypeLabel) || PROPERTY_TYPES[4];
+    const excludedRooms = getExcludedRooms(selectedType.style, selectedType.beds);
+
+    const rooms = PREDEFINED_ROOMS.flatMap(group =>
+      group.names.map(name => {
+        let itemsToUse = DEFAULT_ITEMS;
+        if (name === "Meter Cupboard") itemsToUse = METER_ITEMS;
+        if (name === "Kitchen") itemsToUse = KITCHEN_ITEMS;
+
+        return {
+          id: generateId(),
+          name,
+          floorGroup: group.group,
+          items: itemsToUse.map(itemName => ({
+            id: generateId(),
+            name: itemName,
+            condition: Condition.GOOD,
+            cleanliness: Cleanliness.GOOD,
+            description: '',
+            photos: [],
+            meterType: MeterType.STANDARD,
+            workingStatus: 'Not Tested'
+          }))
+        };
+      })
+    );
+
+    const activeRoomIds = rooms
+      .filter(r => !excludedRooms.includes(r.name))
+      .map(r => r.id);
+
     const newInv: Inventory = {
       id: generateId(),
       address: '',
@@ -87,34 +124,14 @@ const Dashboard = () => {
       })),
       propertyDescription: '',
       frontImage: undefined,
+      propertyType: selectedType.label,
+      activeRoomIds,
       healthSafetyChecks: HS_QUESTIONS.map(q => ({
         id: generateId(),
         question: q,
         answer: null
       })),
-      rooms: PREDEFINED_ROOMS.flatMap(group =>
-        group.names.map(name => {
-          let itemsToUse = DEFAULT_ITEMS;
-          if (name === "Meter Cupboard") itemsToUse = METER_ITEMS;
-          if (name === "Kitchen") itemsToUse = KITCHEN_ITEMS;
-
-          return {
-            id: generateId(),
-            name,
-            floorGroup: group.group,
-            items: itemsToUse.map(itemName => ({
-              id: generateId(),
-              name: itemName,
-              condition: Condition.GOOD,
-              cleanliness: Cleanliness.GOOD,
-              description: '',
-              photos: [],
-              meterType: MeterType.STANDARD,
-              workingStatus: 'Not Tested'
-            }))
-          };
-        })
-      )
+      rooms,
     };
     saveInventory(newInv);
     navigate(`/inventory/${newInv.id}`);
@@ -133,7 +150,7 @@ const Dashboard = () => {
         </div>
         <div className="flex justify-center">
           <Button
-            onClick={createNew}
+            onClick={() => setShowPropertyTypeModal(true)}
             className="bg-bergason-gold text-white hover:bg-amber-600 shadow-lg shadow-amber-900/20 px-8 py-3 rounded-full font-bold transition-transform hover:scale-105"
           >
             <i className="fas fa-plus mr-2"></i> New Inventory
@@ -184,6 +201,12 @@ const Dashboard = () => {
                       <span>{formatDate(inv.dateCreated)}</span>
                       <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                       <span>{inv.rooms.length} Rooms</span>
+                      {inv.propertyType && (
+                        <>
+                          <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                          <span>{inv.propertyType}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <i className="fas fa-chevron-right text-slate-200 group-hover:text-bergason-gold"></i>
@@ -193,6 +216,47 @@ const Dashboard = () => {
           )}
         </div>
       </main>
+
+      {/* Property Type Selection Modal */}
+      {showPropertyTypeModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-xl text-slate-800 mb-1">Select Property Type</h3>
+            <p className="text-sm text-slate-500 mb-5">
+              This will pre-select the relevant rooms for this inventory.
+            </p>
+            <div className="mb-5">
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Property Type</label>
+              <select
+                value={selectedPropertyType}
+                onChange={e => setSelectedPropertyType(e.target.value)}
+                className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400 bg-white"
+              >
+                {PROPERTY_TYPES.map(t => (
+                  <option key={t.label} value={t.label}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPropertyTypeModal(false)}
+                className="flex-1 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowPropertyTypeModal(false);
+                  createNew(selectedPropertyType);
+                }}
+                className="flex-1 py-3 rounded-lg text-sm font-bold text-white bg-bergason-navy hover:bg-slate-800 transition-colors"
+              >
+                Create Inventory →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -340,6 +404,15 @@ const InventoryEditor = () => {
 
   const toggleRoom = (roomId: string) => {
     setExpandedRooms(prev => ({ ...prev, [roomId]: !prev[roomId] }));
+  };
+
+  const toggleRoomActive = (roomId: string) => {
+    if (!inventory) return;
+    const current = inventory.activeRoomIds || inventory.rooms.map(r => r.id);
+    const updated = current.includes(roomId)
+      ? current.filter(id => id !== roomId)
+      : [...current, roomId];
+    updateInventory({ activeRoomIds: updated });
   };
 
   const addPhoto = async (roomId: string, itemId: string, file: File) => {
@@ -619,6 +692,34 @@ const InventoryEditor = () => {
           </div>
         </section>
 
+        {/* 2b. CONDITION / CLEANLINESS LEGEND */}
+        <section className="mb-8 break-inside-avoid">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-3">Condition Key</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {Object.entries(CONDITION_ICONS).map(([label, colorClass]) => (
+                  <div key={label} className="flex items-center gap-1.5 text-xs text-slate-700">
+                    <i className={`fas fa-circle text-[8px] ${colorClass}`}></i>
+                    <span>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-3">Cleanliness Key</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                {Object.entries(CLEANLINESS_ICONS).map(([label, colorClass]) => (
+                  <div key={label} className="flex items-center gap-1.5 text-xs text-slate-700">
+                    <i className={`fas fa-circle text-[8px] ${colorClass}`}></i>
+                    <span>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* 3. ROOMS GRID */}
         <div className="space-y-4">
           {inventory.rooms.map((room, roomIndex) => {
@@ -626,16 +727,21 @@ const InventoryEditor = () => {
             const isExpanded = isPreviewMode || expandedRooms[room.id];
             const isMeterRoom = room.name === "Meter Cupboard";
             const isKitchen = room.name === "Kitchen";
+            const activeIds = inventory.activeRoomIds;
+            const isRoomActive = !activeIds || activeIds.includes(room.id);
+
+            // In preview/print mode, skip inactive rooms
+            if (isPreviewMode && !isRoomActive) return null;
 
             return (
-              <div key={room.id} className="break-inside-avoid">
+              <div key={room.id} className={`break-inside-avoid ${!isRoomActive ? 'opacity-40' : ''}`}>
                 {showHeader && (
                   <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest text-center mb-6 mt-8 print:mt-4">
                     {room.floorGroup}
                   </h2>
                 )}
 
-                <div className="border border-slate-200 rounded-lg overflow-hidden mb-4">
+                <div className={`border rounded-lg overflow-hidden mb-4 ${!isRoomActive ? 'border-slate-100' : 'border-slate-200'}`}>
                   {/* Room Header */}
                   <div
                     onClick={() => !isPreviewMode && toggleRoom(room.id)}
@@ -643,10 +749,25 @@ const InventoryEditor = () => {
                       isExpanded ? 'bg-slate-100 border-b border-slate-200' : 'bg-white hover:bg-slate-50'
                     }`}
                   >
-                    <h3 className="font-serif font-bold text-xl text-slate-900">
+                    <h3 className={`font-serif font-bold text-xl ${isRoomActive ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
                       {roomIndex + 1}. {room.name}
                     </h3>
-                    <i className={`fas fa-chevron-down transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`}></i>
+                    <div className="flex items-center gap-2">
+                      {!isReadOnly && (
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
+                          title={isRoomActive ? 'Exclude room' : 'Include room'}
+                          className={`text-sm px-2 py-1 rounded transition-colors ${
+                            isRoomActive
+                              ? 'text-slate-400 hover:text-red-400'
+                              : 'text-slate-300 hover:text-green-500'
+                          }`}
+                        >
+                          <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+                        </button>
+                      )}
+                      <i className={`fas fa-chevron-down transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`}></i>
+                    </div>
                   </div>
 
                   {isExpanded && (
@@ -746,7 +867,8 @@ const InventoryEditor = () => {
                                   </div>
                                 ) : (
                                   isReadOnly ? (
-                                    <span className={`inline-block px-2 py-1 text-[10px] font-bold uppercase rounded border ${CONDITION_COLORS[item.condition]}`}>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase rounded border ${CONDITION_COLORS[item.condition]}`}>
+                                      <i className="fas fa-circle text-[8px]"></i>
                                       {item.condition}
                                     </span>
                                   ) : (
@@ -779,7 +901,8 @@ const InventoryEditor = () => {
                                   </div>
                                 ) : (
                                   isReadOnly ? (
-                                    <span className={`inline-block px-2 py-1 text-[10px] font-bold uppercase rounded border ${CLEANLINESS_COLORS[item.cleanliness]}`}>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase rounded border ${CLEANLINESS_COLORS[item.cleanliness]}`}>
+                                      <i className="fas fa-circle text-[8px]"></i>
                                       {item.cleanliness}
                                     </span>
                                   ) : (

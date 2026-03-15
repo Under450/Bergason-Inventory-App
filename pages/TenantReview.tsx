@@ -59,7 +59,10 @@ const TenantReview: React.FC = () => {
       setReview(inv.tenantReview || {});
       const completed = inv.completedRooms || [];
       setCompletedRooms(completed);
-      const rooms = inv.inventory.rooms;
+      const activeIdsLoad = inv.inventory.activeRoomIds;
+      const rooms = activeIdsLoad && activeIdsLoad.length > 0
+        ? inv.inventory.rooms.filter(r => activeIdsLoad.includes(r.id))
+        : inv.inventory.rooms;
       const firstIncomplete = rooms.findIndex(r => !completed.includes(r.id));
       setCurrentRoomIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
       setStage('welcome');
@@ -112,7 +115,10 @@ const TenantReview: React.FC = () => {
 
   const handleNextRoom = async () => {
     if (!data) return;
-    const rooms = data.inventory.rooms;
+    const activeIdsLocal = data.inventory.activeRoomIds;
+    const rooms = activeIdsLocal && activeIdsLocal.length > 0
+      ? data.inventory.rooms.filter(r => activeIdsLocal.includes(r.id))
+      : data.inventory.rooms;
     const room = rooms[currentRoomIndex];
     const updatedRooms = completedRooms.includes(room.id) ? completedRooms : [...completedRooms, room.id];
     setCompletedRooms(updatedRooms);
@@ -140,16 +146,26 @@ const TenantReview: React.FC = () => {
     }
   };
 
+  const getActiveRooms = () => {
+    if (!data) return [];
+    const activeIdsLocal = data.inventory.activeRoomIds;
+    return activeIdsLocal && activeIdsLocal.length > 0
+      ? data.inventory.rooms.filter(r => activeIdsLocal.includes(r.id))
+      : data.inventory.rooms;
+  };
+
   const roomAllReviewed = () => {
     if (!data) return false;
-    return data.inventory.rooms[currentRoomIndex].items.every(i => review[i.id] !== undefined);
+    const activeRooms = getActiveRooms();
+    return activeRooms[currentRoomIndex]?.items.every(i => review[i.id] !== undefined) ?? false;
   };
 
   const disputeNeedsComment = () => {
     if (!data) return false;
-    return data.inventory.rooms[currentRoomIndex].items.some(
+    const activeRooms = getActiveRooms();
+    return activeRooms[currentRoomIndex]?.items.some(
       i => review[i.id]?.agreed === false && !review[i.id]?.comment?.trim()
-    );
+    ) ?? false;
   };
 
   const canProceed = roomAllReviewed() && !disputeNeedsComment();
@@ -195,7 +211,10 @@ const TenantReview: React.FC = () => {
   }
 
   const inv = data!.inventory;
-  const rooms = inv.rooms;
+  const activeIds = inv.activeRoomIds;
+  const rooms = activeIds && activeIds.length > 0
+    ? inv.rooms.filter(r => activeIds.includes(r.id))
+    : inv.rooms;
 
   // Group rooms by floorGroup for the welcome screen sidebar
   const groups = rooms.reduce((acc, room) => {

@@ -3,6 +3,7 @@ export enum Condition {
   EXCELLENT = 'Excellent',
   GOOD = 'Good',
   FAIR = 'Fair',
+  CWA = 'Consistent With Age',
   POOR = 'Poor',
   NEEDS_ATTENTION = 'Needs Attention'
 }
@@ -86,6 +87,8 @@ export interface Inventory {
   // New fields for Front Page
   frontImage?: string; // Base64 of the main property photo
   propertyDescription?: string;
+  propertyType?: string;   // e.g. "2 Bed House", "1 Bed Flat"
+  activeRoomIds?: string[]; // IDs of rooms included in this inventory
 
   healthSafetyChecks: HealthSafetyCheck[];
   rooms: Room[];

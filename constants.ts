@@ -128,6 +128,7 @@ export const CONDITION_COLORS: Record<Condition, string> = {
   [Condition.EXCELLENT]: "bg-green-600 text-white border-green-700",
   [Condition.GOOD]: "bg-green-100 text-green-800 border-green-200",
   [Condition.FAIR]: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  [Condition.CWA]: "bg-blue-100 text-blue-800 border-blue-200",
   [Condition.POOR]: "bg-orange-100 text-orange-800 border-orange-200",
   [Condition.NEEDS_ATTENTION]: "bg-red-600 text-white border-red-700"
 };
@@ -202,3 +203,82 @@ Gardens & Exterior Areas
 Most tenancy agreements state that the tenant is responsible for the maintenance of gardens and exterior areas such as driveways unless agreed in writing otherwise. This includes the cutting of lawns, weeding and maintaining the garden, paths, driveways, flowerbeds etc according to the season. If the standard is found to be below the condition as detailed to the report, (with consideration given for a change in season) tenants are often charged for necessary work to bring the affected area back the required level.`;
 
 export const DECLARATION_TEXT = `I hereby confirm approval of the accuracy and contents of the information contained within this report and my responses (if/where provided). I have also read, understood and agree to the disclaimer information contained within this report. I hereby confirm that the test function button of any smoke and carbon monoxide alarms (where present) in my property are/were in working order (alarm sounds when pressed) at the start of my tenancy. I also understand that it is my responsibility to ensure that any smoke or carbon monoxide alarms are tested and batteries replaced (where required) during my tenancy. Furthermore, in the event any such alarm becomes faulty, I will inform my landlord or managing agent with immediate effect to arrange a replacement.`;
+
+export const PROPERTY_TYPES = [
+  { label: "Studio Flat", style: "Flat", beds: 0 },
+  { label: "1 Bed Flat", style: "Flat", beds: 1 },
+  { label: "2 Bed Flat", style: "Flat", beds: 2 },
+  { label: "3 Bed Flat", style: "Flat", beds: 3 },
+  { label: "1 Bed House", style: "House", beds: 1 },
+  { label: "2 Bed House", style: "House", beds: 2 },
+  { label: "3 Bed House", style: "House", beds: 3 },
+  { label: "4 Bed House", style: "House", beds: 4 },
+  { label: "5 Bed House", style: "House", beds: 5 },
+  { label: "Bungalow 1 Bed", style: "Bungalow", beds: 1 },
+  { label: "Bungalow 2 Bed", style: "Bungalow", beds: 2 },
+  { label: "Bungalow 3 Bed", style: "Bungalow", beds: 3 },
+  { label: "Other", style: "Other", beds: 5 },
+];
+
+// Returns room names to EXCLUDE based on property type
+export const getExcludedRooms = (style: string, beds: number): string[] => {
+  const excluded: string[] = [];
+  // Exclude extra bedrooms
+  const allBeds = ["Bedroom 1","Bedroom 2","Bedroom 3","Bedroom 4","Bedroom 5"];
+  for (let i = beds; i < 5; i++) excluded.push(allBeds[i]);
+  if (beds === 0) excluded.push("Bedroom 1"); // Studio
+  // Flats: no garden, garage, outbuilding, stairs
+  if (style === "Flat") {
+    excluded.push("Front Garden","Rear Garden","Garage","Outbuilding / Shed","Stairs");
+  }
+  // Bungalows: no stairs
+  if (style === "Bungalow") {
+    excluded.push("Stairs","Bedroom 4","Bedroom 5");
+  }
+  return excluded;
+};
+
+export const ROOM_ICONS: Record<string, string> = {
+  "Bedroom 1": "fa-bed",
+  "Bedroom 2": "fa-bed",
+  "Bedroom 3": "fa-bed",
+  "Bedroom 4": "fa-bed",
+  "Bedroom 5": "fa-bed",
+  "Kitchen": "fa-utensils",
+  "Bathroom": "fa-bath",
+  "En-Suite": "fa-bath",
+  "Living Room": "fa-couch",
+  "Dining Room": "fa-chair",
+  "Hallway": "fa-door-open",
+  "WC (Downstairs Cloaks)": "fa-toilet",
+  "Front Garden": "fa-leaf",
+  "Rear Garden": "fa-leaf",
+  "Garage": "fa-car",
+  "Meter Cupboard": "fa-gauge",
+  "Stairs": "fa-stairs",
+  "Landing": "fa-stairs",
+  "Loft": "fa-house-chimney",
+  "Porch": "fa-door-closed",
+  "Study": "fa-book",
+  "Airing Cupboard": "fa-shirt",
+  "Storage Cupboard": "fa-box",
+  "Outbuilding / Shed": "fa-warehouse",
+};
+
+export const CONDITION_ICONS: Record<string, string> = {
+  "Excellent": "text-emerald-600",
+  "Good": "text-green-500",
+  "Fair": "text-yellow-500",
+  "Consistent With Age": "text-blue-500",
+  "Poor": "text-orange-500",
+  "Needs Attention": "text-red-600",
+};
+
+export const CLEANLINESS_ICONS: Record<string, string> = {
+  "Professional Clean": "text-emerald-600",
+  "Domestic Clean": "text-blue-500",
+  "Good": "text-green-500",
+  "Fair": "text-yellow-500",
+  "Poor": "text-orange-500",
+  "Dirty": "text-red-600",
+};
