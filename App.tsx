@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
+import TenantReview from './pages/TenantReview';
+import { saveInventoryToFirestore } from './services/inventory';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
 import { generateId, formatDate, formatDateTime } from './utils';
 import { uploadImage } from './services/cloudinary';
@@ -274,6 +276,11 @@ const InventoryEditor = () => {
   const [signerType, setSignerType] = useState<'Tenant' | 'Clerk' | 'Other'>("Tenant");
   const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
   const [frontImageUploading, setFrontImageUploading] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [tenantName, setTenantName] = useState('');
+  const [tenantEmail, setTenantEmail] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sentLink, setSentLink] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -984,18 +991,118 @@ const InventoryEditor = () => {
             </div>
           )}
 
-          {!isLocked && !isPreviewMode && inventory.signatures.length > 0 && inventory.declarationAgreed && (
-            <div className="mt-8 text-center">
-              <Button
-                onClick={() => {
-                  if (window.confirm("Are you sure? This will lock the inventory preventing further edits.")) {
-                    updateInventory({ status: 'LOCKED' });
-                  }
-                }}
-                className="w-full md:w-auto bg-green-600 hover:bg-green-700"
-              >
-                <i className="fas fa-lock mr-2"></i> Lock Inventory
-              </Button>
+          {!isPreviewMode && inventory.signatures.length > 0 && (
+            <div className="mt-8 space-y-3">
+              {/* Send to Tenant */}
+              <div className="text-center">
+                <Button
+                  onClick={() => setShowSendModal(true)}
+                  className="w-full md:w-auto bg-amber-500 hover:bg-amber-600 text-white"
+                >
+                  <i className="fas fa-paper-plane mr-2"></i> Send to Tenant for Review
+                </Button>
+                {sentLink && (
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-left">
+                    <p className="text-xs font-bold text-green-700 mb-1">✅ Saved — share this link with the tenant:</p>
+                    <div className="flex gap-2 items-center">
+                      <input readOnly value={sentLink} className="flex-1 text-xs p-2 border rounded bg-white text-slate-600 font-mono" />
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(sentLink); }}
+                        className="text-xs bg-green-600 text-white px-3 py-2 rounded font-bold whitespace-nowrap"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <a
+                      href={`mailto:?subject=Your Inventory Review — ${inventory.address}&body=Please review your inventory at: ${sentLink}%0A%0AYou have 5 days to complete your review.`}
+                      className="block mt-2 text-xs text-center bg-[#0f172a] text-white py-2 rounded font-bold"
+                    >
+                      <i className="fas fa-envelope mr-1"></i> Open in Email
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Lock Inventory */}
+              {!isLocked && inventory.declarationAgreed && (
+                <div className="text-center">
+                  <Button
+                    onClick={() => {
+                      if (window.confirm("Are you sure? This will lock the inventory preventing further edits.")) {
+                        updateInventory({ status: 'LOCKED' });
+                      }
+                    }}
+                    className="w-full md:w-auto bg-green-600 hover:bg-green-700"
+                  >
+                    <i className="fas fa-lock mr-2"></i> Lock Inventory
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Send to Tenant Modal */}
+          {showSendModal && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                <h3 className="font-bold text-xl text-slate-800 mb-1">Send to Tenant</h3>
+                <p className="text-sm text-slate-500 mb-5">
+                  The tenant will receive a unique link to review the full inventory online. They have 5 days to agree or dispute each item and sign.
+                </p>
+                <div className="space-y-3 mb-5">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Full Name</label>
+                    <input
+                      value={tenantName}
+                      onChange={e => setTenantName(e.target.value)}
+                      placeholder="e.g. Joe Bloggs"
+                      className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Email Address</label>
+                    <input
+                      type="email"
+                      value={tenantEmail}
+                      onChange={e => setTenantEmail(e.target.value)}
+                      placeholder="e.g. tenant@email.com"
+                      className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowSendModal(false)}
+                    className="flex-1 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={!tenantName.trim() || !tenantEmail.trim() || sending}
+                    onClick={async () => {
+                      if (!inventory) return;
+                      setSending(true);
+                      try {
+                        const token = await saveInventoryToFirestore(inventory, tenantEmail.trim(), tenantName.trim());
+                        const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
+                        setSentLink(link);
+                        setShowSendModal(false);
+                      } catch {
+                        alert('Failed to save. Please check your connection and try again.');
+                      } finally {
+                        setSending(false);
+                      }
+                    }}
+                    className={`flex-1 py-3 rounded-lg text-sm font-bold text-white transition-colors ${
+                      !tenantName.trim() || !tenantEmail.trim() || sending
+                        ? 'bg-slate-300 cursor-not-allowed'
+                        : 'bg-amber-500 hover:bg-amber-600'
+                    }`}
+                  >
+                    {sending ? <><i className="fas fa-circle-notch fa-spin mr-2" />Saving...</> : 'Generate Link'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -1053,6 +1160,7 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/inventory/:id" element={<InventoryEditor />} />
+        <Route path="/review/:token" element={<TenantReview />} />
       </Routes>
     </HashRouter>
   );
