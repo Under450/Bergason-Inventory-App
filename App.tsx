@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
-import { generateId, formatDate, formatDateTime, compressImage } from './utils';
+import { generateId, formatDate, formatDateTime } from './utils';
+import { uploadImage } from './services/cloudinary';
 import { Button } from './components/Button';
 import {
   PREDEFINED_ROOMS,
@@ -271,6 +272,8 @@ const InventoryEditor = () => {
 
   const [signerName, setSignerName] = useState("");
   const [signerType, setSignerType] = useState<'Tenant' | 'Clerk' | 'Other'>("Tenant");
+  const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
+  const [frontImageUploading, setFrontImageUploading] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -334,19 +337,16 @@ const InventoryEditor = () => {
 
   const addPhoto = async (roomId: string, itemId: string, file: File) => {
     if (!inventory) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const rawBase64 = e.target?.result as string;
-      const compressed = await compressImage(rawBase64);
-      const photoId = generateId();
+    setUploadingItems(prev => new Set(prev).add(itemId));
+    try {
+      const url = await uploadImage(file);
       const photoObj: Photo = {
-        id: photoId,
-        url: compressed,
+        id: generateId(),
+        url,
         timestamp: Date.now(),
         roomRef: roomId,
         itemRef: itemId
       };
-
       const rooms = [...inventory.rooms];
       const room = rooms.find(r => r.id === roomId);
       const item = room?.items.find(i => i.id === itemId);
@@ -354,20 +354,25 @@ const InventoryEditor = () => {
         item.photos.push(JSON.stringify(photoObj));
         updateInventory({ rooms });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      alert('Photo upload failed. Please check your connection and try again.');
+    } finally {
+      setUploadingItems(prev => { const n = new Set(prev); n.delete(itemId); return n; });
+    }
   };
 
-  const handleFrontImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFrontImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      const raw = evt.target?.result as string;
-      const compressed = await compressImage(raw, 1200);
-      updateInventory({ frontImage: compressed });
-    };
-    reader.readAsDataURL(file);
+    setFrontImageUploading(true);
+    try {
+      const url = await uploadImage(file);
+      updateInventory({ frontImage: url });
+    } catch {
+      alert('Front image upload failed. Please try again.');
+    } finally {
+      setFrontImageUploading(false);
+    }
   };
 
   const handleDocUpload = (docId: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -490,7 +495,12 @@ const InventoryEditor = () => {
         <section className="mb-12 break-inside-avoid">
           {/* FRONT IMAGE UPLOAD */}
           <div className="mb-8">
-            {inventory.frontImage ? (
+            {frontImageUploading ? (
+              <div className="w-full h-48 md:h-64 border-2 border-dashed border-bergason-gold rounded-xl bg-amber-50 flex flex-col items-center justify-center gap-3 text-bergason-navy">
+                <i className="fas fa-circle-notch fa-spin text-3xl text-bergason-gold"></i>
+                <span className="text-sm font-bold">Uploading photo...</span>
+              </div>
+            ) : inventory.frontImage ? (
               <div className="relative group rounded-xl overflow-hidden shadow-lg border-2 border-slate-100 bg-slate-100">
                 <img
                   src={inventory.frontImage}
@@ -782,6 +792,11 @@ const InventoryEditor = () => {
 
                               <div className="col-span-2">
                                 <div className="flex flex-wrap gap-2 items-start">
+                                  {uploadingItems.has(item.id) && (
+                                    <span className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-1 rounded text-[10px] font-bold text-amber-600">
+                                      <i className="fas fa-circle-notch fa-spin"></i> Uploading...
+                                    </span>
+                                  )}
                                   {item.photos.length > 0 && item.photos.map((pStr, idx) => {
                                     const photo = JSON.parse(pStr) as Photo;
                                     const globalIdx = allPhotos.findIndex(p => p.photo.id === photo.id) + 1;
