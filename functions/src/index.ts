@@ -1,4 +1,4 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onRequest } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
@@ -126,12 +126,13 @@ interface SendEmailRequest {
   reviewLink?: string;
 }
 
-export const sendInventoryEmail = onCall(
-  { secrets: [ionosPassword], region: 'europe-west2', invoker: 'public' },
-  async (request) => {
-    const d = request.data as SendEmailRequest;
+export const sendInventoryEmail = onRequest(
+  { secrets: [ionosPassword], region: 'europe-west2', cors: true, invoker: 'public' },
+  async (req, res) => {
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    const d = req.body as SendEmailRequest;
     if (!d.tenantEmail || !d.tenantName || !d.address || !d.firestoreToken) {
-      throw new HttpsError('invalid-argument', 'Missing required fields.');
+      res.status(400).json({ error: 'Missing required fields.' }); return;
     }
 
     const reference = generateReference(d.propertyId);
@@ -271,7 +272,7 @@ export const sendInventoryEmail = onCall(
     await db.collection('inventories').doc(d.firestoreToken)
       .update({ ...firestoreUpdate });
 
-    return { success: true, reference };
+    res.json({ success: true, reference });
   }
 );
 
