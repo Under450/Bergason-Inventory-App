@@ -168,6 +168,7 @@ const TenantReview: React.FC = () => {
             tenantName: data.tenantName,
             address: data.inventory.address,
             pdfStoragePath: storagePath,
+            firestoreToken: token!,
           });
         } catch (pdfErr) {
           console.warn('Review PDF/email failed (non-fatal):', pdfErr);

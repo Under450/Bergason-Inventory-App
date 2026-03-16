@@ -33,6 +33,7 @@ import {
 // --- Services ---
 
 const STORAGE_KEY = 'bergason_inventories_v5';
+const OFFICE_EMAIL_DISPLAY = 'cjeavons@bergason.co.uk';
 
 const getInventories = (): Inventory[] => {
   const data = localStorage.getItem(STORAGE_KEY);
@@ -353,6 +354,7 @@ const InventoryEditor = () => {
   const [sendStatus, setSendStatus] = useState('');
   const [sentLink, setSentLink] = useState<string | null>(null);
   const [sentPdfUrl, setSentPdfUrl] = useState<string | null>(null);
+  const [dispatchRef, setDispatchRef] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -1166,7 +1168,14 @@ const InventoryEditor = () => {
                 </Button>
                 {sentLink && (
                   <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl text-left space-y-3">
-                    <p className="text-sm font-bold text-green-700">✅ Inventory saved &amp; PDF generated</p>
+                    <p className="text-sm font-bold text-green-700">✅ Inventory saved, PDF generated &amp; email sent</p>
+                    {dispatchRef && (
+                      <div className="bg-white border border-green-300 rounded-lg px-3 py-2">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Dispatch Reference</p>
+                        <p className="text-base font-bold text-bergason-navy font-mono">{dispatchRef}</p>
+                        <p className="text-[10px] text-slate-400">Confirmation sent to {OFFICE_EMAIL_DISPLAY} — keep this reference for adjudication</p>
+                      </div>
+                    )}
 
                     {sentPdfUrl && (
                       <div>
@@ -1284,14 +1293,16 @@ const InventoryEditor = () => {
 
                               setSendStatus('Sending email...');
                               const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
-                              await sendInventoryEmail({
+                              const ref = await sendInventoryEmail({
                                 type: 'original',
                                 tenantEmail: tenantEmail.trim(),
                                 tenantName: tenantName.trim(),
                                 address: inventory.address,
                                 pdfStoragePath: storagePath,
+                                firestoreToken: token,
                                 reviewLink: link,
                               });
+                              setDispatchRef(ref);
                             } catch (pdfErr) {
                               const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
                               console.warn('PDF/email failed:', msg);
