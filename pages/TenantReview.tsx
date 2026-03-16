@@ -49,6 +49,7 @@ const TenantReview: React.FC = () => {
   const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState('');
   const [uploadingItem, setUploadingItem] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
   const reviewReportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -350,7 +351,7 @@ const TenantReview: React.FC = () => {
           {rooms.map(room => {
             const roomReviewed = room.items.filter(i => review[i.id] !== undefined).length;
             return (
-              <div key={room.id} className="mb-6">
+              <div key={room.id} id={`room-${room.id}`} style={{ scrollMarginTop: '64px' }} className="mb-6">
                 {/* Room header */}
                 <div className="bg-[#0f172a] text-white px-4 py-3 rounded-t-xl flex items-center justify-between">
                   <h2 className="font-bold text-base">{room.name}</h2>
@@ -504,13 +505,15 @@ const TenantReview: React.FC = () => {
         {/* Fixed bottom bar */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-xl p-4">
           <div className="max-w-2xl mx-auto space-y-2">
+            {/* Progress bar */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-slate-100 rounded-full h-2">
+                <div className="bg-[#0f172a] h-2 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+              </div>
+              <span className="text-xs font-bold text-slate-500 shrink-0">{reviewedCount}/{totalItems}</span>
+            </div>
             {allReviewed() && hasUncommentedDisputes() && (
               <p className="text-xs text-center text-red-500">Please add a comment for each disputed item before submitting.</p>
-            )}
-            {!allReviewed() && (
-              <p className="text-xs text-center text-slate-400">
-                {totalItems - reviewedCount} item{totalItems - reviewedCount !== 1 ? 's' : ''} still to review
-              </p>
             )}
             <button
               onClick={() => { setStage('signature'); window.scrollTo(0, 0); }}
@@ -529,6 +532,75 @@ const TenantReview: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Room navigation FAB */}
+        <button
+          onClick={() => setShowSidebar(true)}
+          className="fixed bottom-36 right-4 z-40 w-12 h-12 bg-[#0f172a] text-white rounded-full shadow-xl flex items-center justify-center hover:bg-slate-700 active:scale-95 transition-all"
+          title="Room navigation"
+        >
+          <i className="fas fa-list-ul text-sm"></i>
+        </button>
+
+        {/* Sidebar overlay */}
+        {showSidebar && (
+          <div className="fixed inset-0 z-50 flex" onClick={() => setShowSidebar(false)}>
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/50" />
+            {/* Panel */}
+            <div
+              className="relative ml-auto w-72 max-w-[85vw] h-full bg-white shadow-2xl flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="bg-[#0f172a] text-white px-4 py-4 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="font-bold text-base">Rooms</h3>
+                  <p className="text-xs text-blue-200">{reviewedCount}/{totalItems} items reviewed</p>
+                </div>
+                <button onClick={() => setShowSidebar(false)} className="text-white/60 hover:text-white text-2xl leading-none">×</button>
+              </div>
+              {/* Overall progress in sidebar */}
+              <div className="px-4 py-3 border-b border-slate-100 shrink-0">
+                <div className="w-full bg-slate-100 rounded-full h-2">
+                  <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+                </div>
+                <p className="text-xs text-slate-400 mt-1 text-right">{progressPct}% complete</p>
+              </div>
+              <div className="overflow-y-auto flex-1 pb-10">
+                {rooms.map(room => {
+                  const roomReviewedCount = room.items.filter(i => review[i.id] !== undefined).length;
+                  const isComplete = room.items.length > 0 && roomReviewedCount === room.items.length;
+                  return (
+                    <button
+                      key={room.id}
+                      onClick={() => {
+                        setShowSidebar(false);
+                        setTimeout(() => {
+                          document.getElementById(`room-${room.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 50);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-slate-50 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                    >
+                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                        isComplete ? 'bg-green-500 border-green-500' : roomReviewedCount > 0 ? 'border-amber-400' : 'border-slate-200'
+                      }`}>
+                        {isComplete && <i className="fas fa-check text-white text-[10px]"></i>}
+                        {!isComplete && roomReviewedCount > 0 && (
+                          <div className="w-2 h-2 rounded-full bg-amber-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{room.name}</p>
+                        <p className="text-xs text-slate-400">{roomReviewedCount}/{room.items.length} reviewed</p>
+                      </div>
+                      <i className="fas fa-chevron-right text-slate-200 text-xs shrink-0"></i>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Photo lightbox */}
         {viewingPhoto && (
