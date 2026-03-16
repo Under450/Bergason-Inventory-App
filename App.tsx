@@ -4,6 +4,7 @@ import TenantReview from './pages/TenantReview';
 import { saveInventoryToFirestore, updateTenantProgress } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { uploadPDFToStorage } from './services/storage';
+import { sendInventoryEmail } from './services/email';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
 import { generateId, formatDate, formatDateTime } from './utils';
 import { uploadImage } from './services/cloudinary';
@@ -1277,12 +1278,24 @@ const InventoryEditor = () => {
                             try {
                               const pdfBlob = await captureElementAsPDF(reportRef.current);
                               setSendStatus('Uploading PDF...');
-                              pdfUrl = await uploadPDFToStorage(pdfBlob, `pdfs/${token}/original.pdf`);
+                              const storagePath = `pdfs/${token}/original.pdf`;
+                              pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
                               await updateTenantProgress(token, { originalPdfUrl: pdfUrl });
+
+                              setSendStatus('Sending email...');
+                              const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
+                              await sendInventoryEmail({
+                                type: 'original',
+                                tenantEmail: tenantEmail.trim(),
+                                tenantName: tenantName.trim(),
+                                address: inventory.address,
+                                pdfStoragePath: storagePath,
+                                reviewLink: link,
+                              });
                             } catch (pdfErr) {
                               const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
-                              console.warn('PDF generation failed:', msg);
-                              alert(`PDF generation failed: ${msg}\n\nThe review link has still been created. You can try generating the PDF again later.`);
+                              console.warn('PDF/email failed:', msg);
+                              alert(`PDF or email step failed: ${msg}\n\nThe review link has still been created.`);
                             }
 
                             const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;

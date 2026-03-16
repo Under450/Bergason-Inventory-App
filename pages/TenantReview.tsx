@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { getInventoryByToken, updateTenantProgress, FirestoreInventory, TenantReviewData } from '../services/inventory';
 import { captureElementAsPDF } from '../services/pdf';
 import { uploadPDFToStorage } from '../services/storage';
+import { sendInventoryEmail } from '../services/email';
 import { SignaturePad } from '../components/SignaturePad';
 import { uploadImage } from '../services/cloudinary';
 import { Photo } from '../types';
@@ -151,15 +152,25 @@ const TenantReview: React.FC = () => {
 
       // Step 2 – generate review report PDF
       setSaveStatus('Generating PDF report...');
-      if (reviewReportRef.current) {
+      if (reviewReportRef.current && data) {
         try {
           const pdfBlob = await captureElementAsPDF(reviewReportRef.current);
           setSaveStatus('Uploading PDF...');
-          const pdfUrl = await uploadPDFToStorage(pdfBlob, `pdfs/${token}/review.pdf`);
+          const storagePath = `pdfs/${token}/review.pdf`;
+          const pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
           await updateTenantProgress(token, { reviewPdfUrl: pdfUrl });
           setReviewPdfUrl(pdfUrl);
+
+          setSaveStatus('Sending email...');
+          await sendInventoryEmail({
+            type: 'review',
+            tenantEmail: data.tenantEmail,
+            tenantName: data.tenantName,
+            address: data.inventory.address,
+            pdfStoragePath: storagePath,
+          });
         } catch (pdfErr) {
-          console.warn('Review PDF generation failed (non-fatal):', pdfErr);
+          console.warn('Review PDF/email failed (non-fatal):', pdfErr);
         }
       }
 
