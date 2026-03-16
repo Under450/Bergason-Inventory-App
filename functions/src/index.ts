@@ -123,7 +123,7 @@ interface SendEmailRequest {
 }
 
 export const sendInventoryEmail = onCall(
-  { secrets: [ionosPassword], region: 'europe-west2' },
+  { secrets: [ionosPassword], region: 'europe-west2', invoker: 'public' },
   async (request) => {
     const d = request.data as SendEmailRequest;
     if (!d.tenantEmail || !d.tenantName || !d.address || !d.firestoreToken) {

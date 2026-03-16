@@ -64,9 +64,34 @@ export const captureElementAsPDF = async (element: HTMLElement): Promise<Blob> =
       logging: false,
       imageTimeout: 20000,
       onclone: (clonedDoc) => {
-        // Ensure all images in the cloned document have crossOrigin set
         clonedDoc.querySelectorAll<HTMLImageElement>('img').forEach(img => {
           img.crossOrigin = 'anonymous';
+        });
+        // html2canvas can't parse oklch (used by Tailwind v4) — replace with hex fallbacks
+        const style = clonedDoc.createElement('style');
+        style.textContent = `
+          * { color-scheme: normal !important; }
+          :root {
+            --tw-color-slate-50: #f8fafc; --tw-color-slate-100: #f1f5f9;
+            --tw-color-slate-200: #e2e8f0; --tw-color-slate-300: #cbd5e1;
+            --tw-color-slate-400: #94a3b8; --tw-color-slate-500: #64748b;
+            --tw-color-slate-600: #475569; --tw-color-slate-700: #334155;
+            --tw-color-slate-800: #1e293b; --tw-color-slate-900: #0f172a;
+            --tw-color-amber-50: #fffbeb; --tw-color-amber-100: #fef3c7;
+            --tw-color-amber-400: #fbbf24; --tw-color-amber-500: #f59e0b;
+            --tw-color-green-50: #f0fdf4; --tw-color-green-100: #dcfce7;
+            --tw-color-green-500: #22c55e; --tw-color-green-600: #16a34a;
+            --tw-color-red-500: #ef4444;
+            --tw-color-blue-50: #eff6ff; --tw-color-blue-100: #dbeafe;
+          }
+        `;
+        clonedDoc.head.appendChild(style);
+        // Replace any remaining oklch(...) inline styles with transparent
+        clonedDoc.querySelectorAll<HTMLElement>('*').forEach(el => {
+          const cs = el.getAttribute('style') || '';
+          if (cs.includes('oklch')) {
+            el.setAttribute('style', cs.replace(/oklch\([^)]+\)/g, 'transparent'));
+          }
         });
       },
     });
