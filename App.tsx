@@ -345,7 +345,8 @@ const InventoryEditor = () => {
 
   const reportRef = useRef<HTMLDivElement>(null);
   const [signerName, setSignerName] = useState("");
-  const [signerType, setSignerType] = useState<'Tenant' | 'Clerk' | 'Other'>("Tenant");
+  const [signerType, setSignerType] = useState<string>("Tenant");
+  const [guidanceTicked, setGuidanceTicked] = useState<Set<string>>(new Set());
   const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
   const [frontImageUploading, setFrontImageUploading] = useState(false);
   // Stage 1 — Send for Signature
@@ -736,8 +737,8 @@ const InventoryEditor = () => {
               <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-3">Condition Key</h4>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                 {Object.entries(CONDITION_ICONS).map(([label, colorClass]) => (
-                  <div key={label} className="flex items-center gap-1.5 text-xs text-slate-700">
-                    <i className={`fas fa-circle text-[8px] ${colorClass}`}></i>
+                  <div key={label} className="flex items-center gap-2 text-xs text-slate-700">
+                    <i className={`fas fa-circle text-lg ${colorClass}`}></i>
                     <span>{label}</span>
                   </div>
                 ))}
@@ -747,8 +748,8 @@ const InventoryEditor = () => {
               <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest mb-3">Cleanliness Key</h4>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                 {Object.entries(CLEANLINESS_ICONS).map(([label, colorClass]) => (
-                  <div key={label} className="flex items-center gap-1.5 text-xs text-slate-700">
-                    <i className={`fas fa-circle text-[8px] ${colorClass}`}></i>
+                  <div key={label} className="flex items-center gap-2 text-xs text-slate-700">
+                    <i className={`fas fa-circle text-lg ${colorClass}`}></i>
                     <span>{label}</span>
                   </div>
                 ))}
@@ -1078,7 +1079,29 @@ const InventoryEditor = () => {
             <div className="whitespace-pre-wrap mb-4">{DISCLAIMER_TEXT}</div>
 
             <h4 className="font-bold text-slate-800 uppercase mb-2 mt-6">Guidance Notes to Tenants</h4>
-            <div className="whitespace-pre-wrap">{GUIDANCE_NOTES}</div>
+            <div className="whitespace-pre-wrap mb-4">{GUIDANCE_NOTES}</div>
+            <div className="mt-4 space-y-2 border-t border-slate-200 pt-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Tenant Acknowledgements</p>
+              {[
+                'I have read and understood the check-out process',
+                'I have read and understood what is required before the check-out report',
+                'I have read and understood the issues to look out for during my tenancy',
+              ].map(item => (
+                <label key={item} className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={guidanceTicked.has(item)}
+                    onChange={() => setGuidanceTicked(prev => {
+                      const next = new Set(prev);
+                      next.has(item) ? next.delete(item) : next.add(item);
+                      return next;
+                    })}
+                    className="mt-0.5 w-4 h-4 accent-bergason-navy shrink-0"
+                  />
+                  <span className="text-xs text-slate-700">{item}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -1154,12 +1177,13 @@ const InventoryEditor = () => {
                   className="p-2 border rounded text-sm bg-white"
                 >
                   <option value="Tenant">Tenant</option>
+                  <option value="Bergason">Bergason</option>
                   <option value="Clerk">Inventory Clerk</option>
                   <option value="Landlord">Landlord</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
-              <SignaturePad onSave={addSignature} />
+              <SignaturePad key={inventory.signatures.length} onSave={addSignature} />
             </div>
           )}
 
