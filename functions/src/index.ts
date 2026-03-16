@@ -21,10 +21,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const generateReference = (): string => {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const rand = String(Math.floor(Math.random() * 9000) + 1000);
-  return `BGS-${date}-${rand}`;
+const generateReference = (propertyId?: string): string => {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const suffix = propertyId ? propertyId.toUpperCase() : String(Math.floor(Math.random() * 9000) + 1000);
+  return `BPS-${dd}${mm}${yyyy}-${suffix}`;
 };
 
 const formatTimestamp = (d: Date): string =>
@@ -118,6 +121,7 @@ interface SendEmailRequest {
   address: string;
   pdfStoragePath: string;
   firestoreToken: string;
+  propertyId?: string;
   signLink?: string;
   reviewLink?: string;
 }
@@ -130,7 +134,7 @@ export const sendInventoryEmail = onCall(
       throw new HttpsError('invalid-argument', 'Missing required fields.');
     }
 
-    const reference = generateReference();
+    const reference = generateReference(d.propertyId);
     const sentAt = new Date();
     const transporter = createTransporter(ionosPassword.value());
     const pdfBuffer = await downloadPDF(d.pdfStoragePath);

@@ -647,15 +647,22 @@ const InventoryEditor = () => {
 
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                Property ID
+                Property ID <span className="text-red-500">*</span>
               </label>
               <input
                 value={inventory.propertyId || ''}
                 readOnly={isReadOnly}
                 onChange={(e) => updateInventory({ propertyId: e.target.value })}
-                placeholder="e.g. BPS-00123"
-                className={`w-full text-base font-mono font-medium text-slate-800 border-b ${isReadOnly ? 'border-transparent' : 'border-slate-200'} focus:border-bergason-navy outline-none py-1 placeholder:font-sans placeholder:text-slate-300`}
+                placeholder="e.g. BPS-00123 (required)"
+                className={`w-full text-base font-mono font-medium border-b outline-none py-1 placeholder:font-sans placeholder:text-slate-300 ${
+                  isReadOnly ? 'border-transparent text-slate-800' :
+                  !inventory.propertyId ? 'border-red-300 text-slate-800 focus:border-red-500' :
+                  'border-slate-200 text-slate-800 focus:border-bergason-navy'
+                }`}
               />
+              {!isReadOnly && !inventory.propertyId && (
+                <p className="text-[10px] text-red-400 mt-0.5">Required before sending to tenant</p>
+              )}
             </div>
 
             <div>
@@ -1193,12 +1200,18 @@ const InventoryEditor = () => {
               {/* ── STAGE 1 — Send for Signature ── */}
               <div>
                 {!signToken ? (
+                  <>
+                  {!inventory.propertyId && (
+                    <p className="text-xs text-center text-red-500 mb-2"><i className="fas fa-exclamation-circle mr-1"></i>Add a Property ID above before sending</p>
+                  )}
                   <Button
                     onClick={() => setShowSignModal(true)}
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                    disabled={!inventory.propertyId}
+                    className={`w-full ${inventory.propertyId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-slate-300 cursor-not-allowed'} text-white`}
                   >
                     <i className="fas fa-pen-nib mr-2"></i> Send for Signature
                   </Button>
+                  </>
                 ) : (
                   <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-3">
                     <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Stage 1 complete — signature request sent</p>
@@ -1359,6 +1372,7 @@ const InventoryEditor = () => {
                                 address: inventory.address,
                                 pdfStoragePath: pdfUrl ? `pdfs/${token}/original.pdf` : '',
                                 firestoreToken: token,
+                                propertyId: inventory.propertyId,
                                 signLink,
                               });
                               setDispatchRef(ref);
@@ -1431,6 +1445,7 @@ const InventoryEditor = () => {
                             address: inventory.address,
                             pdfStoragePath: sentPdfUrl ? `pdfs/${signToken}/original.pdf` : '',
                             firestoreToken: signToken,
+                            propertyId: inventory.propertyId,
                             reviewLink: link,
                           });
                           setReviewSentLink(link);

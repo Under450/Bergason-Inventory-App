@@ -10,6 +10,7 @@ export interface SendEmailParams {
   address: string;
   pdfStoragePath: string;
   firestoreToken: string;
+  propertyId?: string;
   signLink?: string;    // for signature_request
   reviewLink?: string;  // for review_link
 }
