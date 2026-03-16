@@ -34,7 +34,36 @@ import {
 // --- Services ---
 
 const STORAGE_KEY = 'bergason_inventories_v5';
+const TOKEN_STORAGE_KEY = 'bergason_tokens_v1';
 const OFFICE_EMAIL_DISPLAY = 'cjeavons@bergason.co.uk';
+
+interface TokenState {
+  signToken: string;
+  tenantName: string;
+  tenantEmail: string;
+  sentPdfUrl: string | null;
+  dispatchRef: string | null;
+  reviewSentLink: string | null;
+  reviewDispatchRef: string | null;
+}
+
+const getTokenState = (inventoryId: string): TokenState | null => {
+  try {
+    const data = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!data) return null;
+    const all = JSON.parse(data) as Record<string, TokenState>;
+    return all[inventoryId] ?? null;
+  } catch { return null; }
+};
+
+const saveTokenState = (inventoryId: string, state: Partial<TokenState>) => {
+  try {
+    const data = localStorage.getItem(TOKEN_STORAGE_KEY);
+    const all = data ? JSON.parse(data) as Record<string, TokenState> : {};
+    all[inventoryId] = { ...all[inventoryId], ...state } as TokenState;
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(all));
+  } catch { /* ignore */ }
+};
 
 const getInventories = (): Inventory[] => {
   const data = localStorage.getItem(STORAGE_KEY);
@@ -386,6 +415,18 @@ const InventoryEditor = () => {
         }
 
         setInventory(data);
+
+        // Restore send state from localStorage so page refresh doesn't lose it
+        const saved = getTokenState(data.id);
+        if (saved?.signToken) {
+          setSignToken(saved.signToken);
+          setTenantName(saved.tenantName ?? '');
+          setTenantEmail(saved.tenantEmail ?? '');
+          setSentPdfUrl(saved.sentPdfUrl ?? null);
+          setDispatchRef(saved.dispatchRef ?? null);
+          setReviewSentLink(saved.reviewSentLink ?? null);
+          setReviewDispatchRef(saved.reviewDispatchRef ?? null);
+        }
       } else {
         navigate('/');
       }
@@ -1364,8 +1405,9 @@ const InventoryEditor = () => {
 
                             setSendStatus('Sending signature request email...');
                             const signLink = `${window.location.origin}${window.location.pathname}#/sign/${token}`;
+                            let emailRef: string | null = null;
                             try {
-                              const ref = await sendInventoryEmail({
+                              emailRef = await sendInventoryEmail({
                                 type: 'signature_request',
                                 tenantEmail: tenantEmail.trim(),
                                 tenantName: tenantName.trim(),
@@ -1375,7 +1417,7 @@ const InventoryEditor = () => {
                                 propertyId: inventory.propertyId,
                                 signLink,
                               });
-                              setDispatchRef(ref);
+                              setDispatchRef(emailRef);
                             } catch (emailErr) {
                               console.warn('Email failed:', emailErr);
                               alert('Email failed to send, but the signature link has been created. You can copy it manually.');
@@ -1383,6 +1425,15 @@ const InventoryEditor = () => {
 
                             setSignToken(token);
                             if (pdfUrl) setSentPdfUrl(pdfUrl);
+                            saveTokenState(inventory.id, {
+                              signToken: token,
+                              tenantName: tenantName.trim(),
+                              tenantEmail: tenantEmail.trim(),
+                              sentPdfUrl: pdfUrl ?? null,
+                              dispatchRef: emailRef,
+                              reviewSentLink: null,
+                              reviewDispatchRef: null,
+                            });
                             setShowSignModal(false);
                           } catch {
                             alert('Failed to save. Please check your connection and try again.');
@@ -1450,6 +1501,7 @@ const InventoryEditor = () => {
                           });
                           setReviewSentLink(link);
                           setReviewDispatchRef(ref);
+                          saveTokenState(inventory.id, { reviewSentLink: link, reviewDispatchRef: ref ?? null });
                           setShowReviewModal(false);
                         } catch (err) {
                           const msg = err instanceof Error ? err.message : String(err);
