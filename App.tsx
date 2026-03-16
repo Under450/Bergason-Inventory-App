@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import bergasonLogo from './bergasonlogo.png';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
@@ -88,15 +89,7 @@ const getInventoryById = (id: string): Inventory | undefined => {
 // --- Components ---
 
 const BergasonLogo = ({ className = "" }: { className?: string }) => (
-  <div className={`flex flex-col items-center justify-center bg-black text-bergason-gold p-4 w-[200px] border-2 border-bergason-gold ${className}`}>
-    <div className="text-3xl font-serif text-white tracking-wide mb-2">Bergason</div>
-    <div className="relative w-24 h-28 bg-[#fef3c7] flex items-center justify-center mb-2">
-      <span className="font-serif italic text-black text-[120px] leading-none -ml-2 -mt-4">b</span>
-    </div>
-    <div className="text-xs uppercase tracking-widest text-white border-t border-bergason-gold pt-1 w-full text-center">
-      Property Services
-    </div>
-  </div>
+  <img src={bergasonLogo} alt="Bergason Property Services" className={`w-28 h-auto ${className}`} />
 );
 
 const Dashboard = () => {
@@ -375,6 +368,7 @@ const InventoryEditor = () => {
   const reportRef = useRef<HTMLDivElement>(null);
   const [signerName, setSignerName] = useState("");
   const [signerType, setSignerType] = useState<string>("Tenant");
+  const [tenantCount, setTenantCount] = useState<number>(1);
   const [guidanceTicked, setGuidanceTicked] = useState<Set<string>>(new Set());
   const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
   const [frontImageUploading, setFrontImageUploading] = useState(false);
@@ -532,22 +526,6 @@ const InventoryEditor = () => {
     reader.readAsDataURL(file);
   };
 
-  const addSignature = (dataUrl: string) => {
-    if (!inventory) return;
-    if (!signerName) {
-      alert("Please enter the name of the person signing.");
-      return;
-    }
-    const newSig: SignatureEntry = {
-      id: generateId(),
-      name: signerName,
-      type: signerType,
-      data: dataUrl,
-      date: Date.now()
-    };
-    updateInventory({ signatures: [...inventory.signatures, newSig] });
-    setSignerName("");
-  };
 
   if (!inventory) {
     return (
@@ -1194,44 +1172,134 @@ const InventoryEditor = () => {
             </div>
           </div>
 
-          <div className="space-y-8 mb-8">
-            {inventory.signatures.map(sig => (
-              <div key={sig.id} className="border-t border-slate-300 pt-2 w-full md:w-1/2">
-                <div className="relative">
-                  <img src={sig.data} className="h-16 mix-blend-multiply" alt="Signed" />
-                  <div className="absolute top-0 right-0 text-[9px] text-green-600 font-bold border border-green-200 bg-green-50 px-1 rounded">
-                    {formatDateTime(sig.date)}
-                  </div>
-                </div>
-                <p className="text-lg font-serif text-slate-800">{sig.name}</p>
-                <p className="text-[10px] font-bold uppercase text-slate-400">{sig.type} Signature</p>
-              </div>
-            ))}
-          </div>
 
           {!isReadOnly && (
-            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-              <h4 className="text-xs font-bold uppercase text-slate-500 mb-4">Add Signature</h4>
-              <div className="flex flex-col md:flex-row gap-4 mb-4">
-                <input
-                  placeholder="Full Name"
-                  value={signerName}
-                  onChange={(e) => setSignerName(e.target.value)}
-                  className="flex-1 p-2 border rounded text-sm"
-                />
-                <select
-                  value={signerType}
-                  onChange={(e) => setSignerType(e.target.value as any)}
-                  className="p-2 border rounded text-sm bg-white"
-                >
-                  <option value="Tenant">Tenant</option>
-                  <option value="Bergason">Bergason</option>
-                  <option value="Clerk">Inventory Clerk</option>
-                  <option value="Landlord">Landlord</option>
-                  <option value="Other">Other</option>
-                </select>
+            <div className="space-y-6">
+              {/* How many tenants */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <label className="text-xs font-bold uppercase text-slate-500 block mb-3">How many tenants are signing?</label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setTenantCount(n)}
+                      className={`w-12 h-12 rounded-full font-bold text-base border-2 transition-all ${
+                        tenantCount === n
+                          ? 'bg-bergason-navy text-white border-bergason-navy shadow-md'
+                          : 'bg-white text-slate-500 border-slate-200 hover:border-bergason-navy'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <SignaturePad key={inventory.signatures.length} onSave={addSignature} />
+
+              {/* One signature box per tenant */}
+              {Array.from({ length: tenantCount }).map((_, idx) => {
+                const tenantSig = inventory.signatures.filter(s => s.type === 'Tenant')[idx];
+                return (
+                  <div key={idx} className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                    <h4 className="text-xs font-bold uppercase text-slate-500 mb-4">
+                      Tenant {tenantCount > 1 ? idx + 1 : ''} Signature
+                    </h4>
+                    {tenantSig ? (
+                      <div className="flex items-start gap-4">
+                        <div>
+                          <img src={tenantSig.data} className="h-16 mix-blend-multiply" alt="Signed" />
+                          <p className="text-base font-serif text-slate-800 mt-1">{tenantSig.name}</p>
+                          <p className="text-[10px] font-bold uppercase text-green-600">✓ Signed {formatDateTime(tenantSig.date)}</p>
+                        </div>
+                        <button
+                          onClick={() => updateInventory({ signatures: inventory.signatures.filter(s => s.id !== tenantSig.id) })}
+                          className="text-xs text-red-400 hover:text-red-600 mt-1"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          placeholder={`Tenant ${tenantCount > 1 ? idx + 1 : ''} full name`}
+                          value={idx === 0 ? signerName : ''}
+                          onChange={(e) => setSignerName(e.target.value)}
+                          className="w-full p-2 border rounded text-sm mb-3"
+                        />
+                        <SignaturePad
+                          key={`tenant-${idx}-${inventory.signatures.filter(s => s.type === 'Tenant').length}`}
+                          onSave={(dataUrl) => {
+                            if (!inventory) return;
+                            const name = signerName.trim() || `Tenant ${idx + 1}`;
+                            const newSig: SignatureEntry = {
+                              id: generateId(),
+                              name,
+                              type: 'Tenant',
+                              data: dataUrl,
+                              date: Date.now(),
+                            };
+                            updateInventory({ signatures: [...inventory.signatures, newSig] });
+                            setSignerName('');
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Other signers (inspector, Bergason etc.) */}
+              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                <h4 className="text-xs font-bold uppercase text-slate-500 mb-4">Other Signature (Inspector / Bergason)</h4>
+                <div className="flex flex-col md:flex-row gap-4 mb-4">
+                  <input
+                    placeholder="Full Name"
+                    value={signerType === 'Tenant' ? '' : signerName}
+                    onChange={(e) => setSignerName(e.target.value)}
+                    className="flex-1 p-2 border rounded text-sm"
+                  />
+                  <select
+                    value={signerType === 'Tenant' ? 'Bergason' : signerType}
+                    onChange={(e) => setSignerType(e.target.value)}
+                    className="p-2 border rounded text-sm bg-white"
+                  >
+                    <option value="Bergason">Bergason</option>
+                    <option value="Clerk">Inventory Clerk</option>
+                    <option value="Landlord">Landlord</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <SignaturePad
+                  key={`other-${inventory.signatures.filter(s => s.type !== 'Tenant').length}`}
+                  onSave={(dataUrl) => {
+                    if (!inventory) return;
+                    const type = signerType === 'Tenant' ? 'Bergason' : signerType;
+                    const newSig: SignatureEntry = {
+                      id: generateId(),
+                      name: signerName.trim() || type,
+                      type,
+                      data: dataUrl,
+                      date: Date.now(),
+                    };
+                    updateInventory({ signatures: [...inventory.signatures, newSig] });
+                    setSignerName('');
+                  }}
+                />
+                {inventory.signatures.filter(s => s.type !== 'Tenant').map(sig => (
+                  <div key={sig.id} className="flex items-start gap-4 mt-4 pt-4 border-t border-slate-200">
+                    <div>
+                      <img src={sig.data} className="h-16 mix-blend-multiply" alt="Signed" />
+                      <p className="text-base font-serif text-slate-800 mt-1">{sig.name}</p>
+                      <p className="text-[10px] font-bold uppercase text-green-600">✓ {sig.type} — {formatDateTime(sig.date)}</p>
+                    </div>
+                    <button
+                      onClick={() => updateInventory({ signatures: inventory.signatures.filter(s => s.id !== sig.id) })}
+                      className="text-xs text-red-400 hover:text-red-600 mt-1"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import bergasonLogo from '../bergasonlogo.png';
 import { useParams } from 'react-router-dom';
 import { getInventoryByToken, updateTenantProgress, FirestoreInventory } from '../services/inventory';
 import { sendInventoryEmail } from '../services/email';
@@ -27,12 +28,7 @@ const CLEANLINESS_BADGE: Record<string, { bg: string; color: string }> = {
 };
 
 const BergasonLogo = () => (
-  <div className="flex flex-col items-center justify-center bg-black p-3 border-2 border-amber-500 w-32">
-    <div className="text-xl font-serif text-white tracking-wide">Bergason</div>
-    <div className="text-[8px] uppercase tracking-widest text-white border-t border-amber-500 pt-1 w-full text-center mt-1">
-      Property Services
-    </div>
-  </div>
+  <img src={bergasonLogo} alt="Bergason Property Services" className="w-24 h-auto" />
 );
 
 const TenantSign: React.FC = () => {
@@ -171,10 +167,7 @@ const TenantSign: React.FC = () => {
       >
         {/* Header */}
         <div style={{ textAlign: 'center', borderBottom: '3px double #d4af37', paddingBottom: '20px', marginBottom: '24px' }}>
-          <div style={{ backgroundColor: '#0f172a', display: 'inline-block', padding: '10px 24px', marginBottom: '12px' }}>
-            <div style={{ color: '#d4af37', fontSize: '20px', fontWeight: 'bold', letterSpacing: '2px' }}>BERGASON</div>
-            <div style={{ color: '#fff', fontSize: '9px', letterSpacing: '4px', textAlign: 'center' }}>PROPERTY SERVICES</div>
-          </div>
+          <img src={bergasonLogo} alt="Bergason Property Services" crossOrigin="anonymous" style={{ width: '100px', height: 'auto', margin: '0 auto 12px' }} />
           <h1 style={{ fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '2px', margin: '8px 0 4px' }}>
             Inventory &amp; Schedule of Condition
           </h1>

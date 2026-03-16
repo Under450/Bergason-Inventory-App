@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import bergasonLogo from '../bergasonlogo.png';
 import { useParams } from 'react-router-dom';
 import { getInventoryByToken, updateTenantProgress, FirestoreInventory, TenantReviewData } from '../services/inventory';
 import { captureElementAsPDF } from '../services/pdf';
@@ -30,12 +31,7 @@ const CLEANLINESS_BADGE: Record<string, { bg: string; color: string }> = {
 };
 
 const BergasonLogo = () => (
-  <div className="flex flex-col items-center justify-center bg-black p-3 border-2 border-amber-500 w-32">
-    <div className="text-xl font-serif text-white tracking-wide">Bergason</div>
-    <div className="text-[8px] uppercase tracking-widest text-white border-t border-amber-500 pt-1 w-full text-center mt-1">
-      Property Services
-    </div>
-  </div>
+  <img src={bergasonLogo} alt="Bergason Property Services" className="w-24 h-auto" />
 );
 
 const TenantReview: React.FC = () => {
@@ -710,10 +706,7 @@ const TenantReview: React.FC = () => {
         style={{ position: 'fixed', top: 0, left: '-10000px', width: '794px', backgroundColor: '#fff', padding: '40px', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', color: '#1e293b' }}
       >
         <div style={{ textAlign: 'center', borderBottom: '3px double #d4af37', paddingBottom: '24px', marginBottom: '32px' }}>
-          <div style={{ backgroundColor: '#0f172a', display: 'inline-block', padding: '12px 24px', marginBottom: '12px' }}>
-            <div style={{ color: '#d4af37', fontSize: '20px', fontWeight: 'bold', letterSpacing: '2px' }}>BERGASON</div>
-            <div style={{ color: '#fff', fontSize: '9px', letterSpacing: '4px', textAlign: 'center' }}>PROPERTY SERVICES</div>
-          </div>
+          <img src={bergasonLogo} alt="Bergason Property Services" crossOrigin="anonymous" style={{ width: '100px', height: 'auto', margin: '0 auto 12px' }} />
           <h1 style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '2px', marginTop: '8px' }}>Tenant Review Report</h1>
           <p style={{ color: '#64748b', marginTop: '4px' }}>{data?.inventory.address}</p>
           <p style={{ color: '#64748b', fontSize: '12px' }}>Original Inventory: {formatDate(data?.inventory.dateCreated ?? 0)}</p>
