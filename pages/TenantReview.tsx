@@ -46,6 +46,7 @@ const TenantReview: React.FC = () => {
   const [timeRemaining, setTimeRemaining] = useState('');
   const [uploadingItem, setUploadingItem] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [noFurtherDefects, setNoFurtherDefects] = useState(false);
   const reviewReportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -150,6 +151,7 @@ const TenantReview: React.FC = () => {
       await updateTenantProgress(token, {
         tenantSignature: signatureData,
         tenantReviewCompletedAt: completedAt,
+        noFurtherDefects: true,
         status: 'completed',
       });
 
@@ -667,15 +669,34 @@ const TenantReview: React.FC = () => {
             ← Go back and amend
           </button>
 
+          {/* No Further Defects Declaration */}
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={noFurtherDefects}
+                onChange={e => setNoFurtherDefects(e.target.checked)}
+                className="mt-1 w-5 h-5 accent-orange-600 shrink-0"
+              />
+              <div>
+                <p className="text-sm font-bold text-orange-800 mb-1">No Further Defects Declaration <span className="text-red-500">*</span></p>
+                <p className="text-xs text-orange-700 leading-relaxed">I confirm that since moving in I have found no defects, damage or issues beyond those recorded in this inventory and those I have disputed above. I understand this declaration forms part of my tenancy record and that defects not raised now cannot be claimed as pre-existing at check-out.</p>
+              </div>
+            </label>
+          </div>
+
           {/* Declaration */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 text-xs text-slate-600 leading-relaxed">
             By signing below, I confirm I have reviewed this inventory in full. Any disputes raised are recorded above and will be forwarded to Bergason Property Services. I understand this signed review forms part of my tenancy record.
           </div>
 
           {/* Signature */}
-          <div className="bg-white rounded-xl shadow-md p-5">
+          <div className={`bg-white rounded-xl shadow-md p-5 transition-opacity ${!noFurtherDefects ? 'opacity-40 pointer-events-none' : ''}`}>
             <h3 className="font-bold text-slate-800 mb-1">Sign to Submit</h3>
             <p className="text-xs text-slate-400 mb-4">{data?.tenantName} — {formatDate(Date.now())}</p>
+            {!noFurtherDefects && (
+              <p className="text-xs text-orange-600 mb-3">Please tick the No Further Defects declaration above before signing.</p>
+            )}
             {saving ? (
               <div className="py-8 text-center">
                 <i className="fas fa-circle-notch fa-spin text-3xl text-slate-400 mb-3 block"></i>

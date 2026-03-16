@@ -367,7 +367,7 @@ const InventoryEditor = () => {
 
   const reportRef = useRef<HTMLDivElement>(null);
   const [signerName, setSignerName] = useState("");
-  const [signerType, setSignerType] = useState<string>("Tenant");
+  const [signerType, setSignerType] = useState<string>("Bergason");
   const [tenantCount, setTenantCount] = useState<number>(1);
   const [guidanceTicked, setGuidanceTicked] = useState<Set<string>>(new Set());
   const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
@@ -891,12 +891,22 @@ const InventoryEditor = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                           <div>
                             <label className="text-[10px] font-bold text-amber-700 uppercase block mb-1"><i className="fas fa-wind mr-1"></i>Odour / Smell at Check-in</label>
-                            <input
+                            <select
                               value={room.odourNotes || ''}
                               onChange={e => updateRoom(room.id, { odourNotes: e.target.value })}
-                              placeholder="e.g. No odour, fresh / smoke smell / pet odour"
                               className="w-full text-xs p-2 border border-amber-200 rounded outline-none focus:border-amber-400 bg-white"
-                            />
+                            >
+                              <option value="">Select odour...</option>
+                              <option value="No odour / Fresh">No odour / Fresh</option>
+                              <option value="Faint / Neutral">Faint / Neutral</option>
+                              <option value="Mild smoke odour">Mild smoke odour</option>
+                              <option value="Strong smoke odour">Strong smoke odour</option>
+                              <option value="Pet odour">Pet odour</option>
+                              <option value="Damp / Musty">Damp / Musty</option>
+                              <option value="Food odour">Food odour</option>
+                              <option value="Cleaning products">Cleaning products</option>
+                              <option value="Other — see notes">Other — see notes</option>
+                            </select>
                           </div>
                           <div>
                             <label className="text-[10px] font-bold text-amber-700 uppercase block mb-1"><i className="fas fa-paint-roller mr-1"></i>Decoration Colour</label>
@@ -1282,22 +1292,6 @@ const InventoryEditor = () => {
             </label>
           </div>
 
-          {/* No further defects declaration */}
-          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                disabled={isReadOnly}
-                checked={inventory.noFurtherDefects || false}
-                onChange={e => updateInventory({ noFurtherDefects: e.target.checked })}
-                className="mt-1 w-5 h-5 accent-orange-600"
-              />
-              <div>
-                <p className="text-sm font-bold text-orange-800 mb-1">No Further Defects Declaration</p>
-                <p className="text-xs text-orange-700 leading-relaxed">I/We confirm that we have examined the property and its contents in full and have found no defects, damage or issues beyond those already recorded in this inventory. We understand that any defects not reported at this stage cannot be raised as pre-existing at check-out.</p>
-              </div>
-            </label>
-          </div>
 
           <div className="mb-8 flex items-center gap-4">
             <span className="text-sm font-bold text-slate-700">Was the tenant present during the inspection?</span>
@@ -1400,12 +1394,12 @@ const InventoryEditor = () => {
                 <div className="flex flex-col md:flex-row gap-4 mb-4">
                   <input
                     placeholder="Full Name"
-                    value={signerType === 'Tenant' ? '' : signerName}
+                    value={signerName}
                     onChange={(e) => setSignerName(e.target.value)}
                     className="flex-1 p-2 border rounded text-sm"
                   />
                   <select
-                    value={signerType === 'Tenant' ? 'Bergason' : signerType}
+                    value={signerType}
                     onChange={(e) => setSignerType(e.target.value)}
                     className="p-2 border rounded text-sm bg-white"
                   >
@@ -1419,7 +1413,7 @@ const InventoryEditor = () => {
                   key={`other-${inventory.signatures.filter(s => s.type !== 'Tenant').length}`}
                   onSave={(dataUrl) => {
                     if (!inventory) return;
-                    const type = signerType === 'Tenant' ? 'Bergason' : signerType;
+                    const type = signerType;
                     const newSig: SignatureEntry = {
                       id: generateId(),
                       name: signerName.trim() || type,
@@ -1465,12 +1459,12 @@ const InventoryEditor = () => {
                     disabled={!inventory.propertyId}
                     className={`w-full ${inventory.propertyId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-slate-300 cursor-not-allowed'} text-white`}
                   >
-                    <i className="fas fa-pen-nib mr-2"></i> Send for Signature
+                    <i className="fas fa-paper-plane mr-2"></i> Submit to Bergason
                   </Button>
                   </>
                 ) : (
                   <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-3">
-                    <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Stage 1 complete — signature request sent</p>
+                    <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Submitted to Bergason — signed inventory sent</p>
                     {dispatchRef && (
                       <div className="bg-white border border-green-300 rounded-lg px-3 py-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Dispatch Reference</p>
@@ -1554,13 +1548,13 @@ const InventoryEditor = () => {
             </div>
           )}
 
-          {/* ── Stage 1 Modal — Send for Signature ── */}
+          {/* ── Stage 1 Modal — Submit to Bergason ── */}
           {showSignModal && (
             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-                <h3 className="font-bold text-xl text-slate-800 mb-1">Send for Signature</h3>
+                <h3 className="font-bold text-xl text-slate-800 mb-1">Submit Signed Inventory</h3>
                 <p className="text-sm text-slate-500 mb-5">
-                  The inventory PDF will be saved to Firebase and the tenant will receive a digital signature link.
+                  The signed inventory PDF will be saved and a confirmation copy emailed to the tenant and Bergason office.
                 </p>
                 {sending ? (
                   <div className="py-8 text-center">
@@ -1618,19 +1612,17 @@ const InventoryEditor = () => {
                               console.warn('PDF generation/upload failed:', pdfErr);
                             }
 
-                            setSendStatus('Sending signature request email...');
-                            const signLink = `${window.location.origin}${window.location.pathname}#/sign/${token}`;
+                            setSendStatus('Sending confirmation email...');
                             let emailRef: string | null = null;
                             try {
                               emailRef = await sendInventoryEmail({
-                                type: 'signature_request',
+                                type: 'signature_confirmation',
                                 tenantEmail: tenantEmail.trim(),
                                 tenantName: tenantName.trim(),
                                 address: inventory.address,
                                 pdfStoragePath: pdfUrl ? `pdfs/${token}/original.pdf` : '',
                                 firestoreToken: token,
                                 propertyId: inventory.propertyId,
-                                signLink,
                               });
                               setDispatchRef(emailRef);
                             } catch (emailErr) {
