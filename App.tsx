@@ -442,6 +442,12 @@ const InventoryEditor = () => {
     updateInventory({ healthSafetyChecks: newChecks });
   };
 
+  const updateRoom = (roomId: string, updates: Partial<import('./types').Room>) => {
+    if (!inventory) return;
+    const rooms = inventory.rooms.map(r => r.id === roomId ? { ...r, ...updates } : r);
+    updateInventory({ rooms });
+  };
+
   const updateItem = (roomId: string, itemId: string, updates: Partial<InventoryItem>) => {
     if (!inventory) return;
     const rooms = [...inventory.rooms];
@@ -704,6 +710,47 @@ const InventoryEditor = () => {
               />
             </div>
           </div>
+
+          {/* Pre-tenancy professional clean */}
+          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <h4 className="text-xs font-bold uppercase text-green-700 tracking-wider mb-3">
+              <i className="fas fa-spray-can mr-1"></i> Pre-Tenancy Professional Clean
+            </h4>
+            <p className="text-xs text-green-700 mb-3">Required evidence for cleaning claims at check-out. Sets baseline as "professionally cleaned" not just "domestic standard".</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="preTenancyClean"
+                  disabled={isReadOnly}
+                  checked={inventory.preTenancyClean || false}
+                  onChange={e => updateInventory({ preTenancyClean: e.target.checked })}
+                  className="w-5 h-5 accent-green-600"
+                />
+                <label htmlFor="preTenancyClean" className="text-sm font-bold text-green-800">Professionally cleaned before tenancy</label>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Date of Clean</label>
+                <input
+                  value={inventory.preTenancyCleanDate || ''}
+                  readOnly={isReadOnly}
+                  onChange={e => updateInventory({ preTenancyCleanDate: e.target.value })}
+                  placeholder="e.g. 14 March 2025"
+                  className="w-full text-sm p-2 border border-slate-200 rounded-lg outline-none focus:border-green-400"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Invoice Reference</label>
+                <input
+                  value={inventory.preTenancyCleanInvoiceRef || ''}
+                  readOnly={isReadOnly}
+                  onChange={e => updateInventory({ preTenancyCleanInvoiceRef: e.target.value })}
+                  placeholder="e.g. INV-2025-0441"
+                  className="w-full text-sm p-2 border border-slate-200 rounded-lg outline-none focus:border-green-400"
+                />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* 2. HEALTH & SAFETY */}
@@ -839,6 +886,45 @@ const InventoryEditor = () => {
 
                   {isExpanded && (
                     <div className="p-2 md:p-4 bg-white">
+                      {/* Room-level evidence fields */}
+                      {!isReadOnly && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-700 uppercase block mb-1"><i className="fas fa-wind mr-1"></i>Odour / Smell at Check-in</label>
+                            <input
+                              value={room.odourNotes || ''}
+                              onChange={e => updateRoom(room.id, { odourNotes: e.target.value })}
+                              placeholder="e.g. No odour, fresh / smoke smell / pet odour"
+                              className="w-full text-xs p-2 border border-amber-200 rounded outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-700 uppercase block mb-1"><i className="fas fa-paint-roller mr-1"></i>Decoration Colour</label>
+                            <input
+                              value={room.decorationColour || ''}
+                              onChange={e => updateRoom(room.id, { decorationColour: e.target.value })}
+                              placeholder="e.g. Magnolia walls, white woodwork"
+                              className="w-full text-xs p-2 border border-amber-200 rounded outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-amber-700 uppercase block mb-1"><i className="fas fa-calendar mr-1"></i>Last Decorated</label>
+                            <input
+                              value={room.lastDecorated || ''}
+                              onChange={e => updateRoom(room.id, { lastDecorated: e.target.value })}
+                              placeholder="e.g. 2023"
+                              className="w-full text-xs p-2 border border-amber-200 rounded outline-none focus:border-amber-400 bg-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {isReadOnly && (room.odourNotes || room.decorationColour || room.lastDecorated) && (
+                        <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs">
+                          {room.odourNotes && <div><span className="font-bold text-amber-700">Odour:</span> {room.odourNotes}</div>}
+                          {room.decorationColour && <div><span className="font-bold text-amber-700">Decoration:</span> {room.decorationColour}</div>}
+                          {room.lastDecorated && <div><span className="font-bold text-amber-700">Last decorated:</span> {room.lastDecorated}</div>}
+                        </div>
+                      )}
                       <div className="hidden md:grid grid-cols-12 gap-2 bg-slate-50 p-2 text-[10px] font-bold uppercase text-slate-500 tracking-wider mb-2">
                         <div className="col-span-2">Item</div>
                         <div className="col-span-4">Description/Details</div>
@@ -888,13 +974,21 @@ const InventoryEditor = () => {
                                 )}
 
                                 {isMeter && (
-                                  <div className="mb-2">
+                                  <div className="mb-2 space-y-1">
                                     <input
                                       placeholder="Serial Number"
                                       className="w-full text-xs p-1 border rounded"
                                       value={item.serialNumber || ''}
                                       readOnly={isReadOnly}
                                       onChange={e => updateItem(room.id, item.id, { serialNumber: e.target.value })}
+                                    />
+                                    <input
+                                      placeholder="Account Number"
+                                      className="w-full text-xs p-1 border rounded"
+                                      value={item.accountNumber || ''}
+                                      readOnly={isReadOnly}
+                                      onChange={e => updateItem(room.id, item.id, { accountNumber: e.target.value })}
+                                      title="Utility account number — required for utility charge claims"
                                     />
                                   </div>
                                 )}
@@ -908,6 +1002,42 @@ const InventoryEditor = () => {
                                     className="w-full text-sm p-2 bg-slate-50 border border-slate-200 rounded focus:border-bergason-gold outline-none resize-y h-16 md:h-auto"
                                     placeholder="Notes..."
                                   />
+                                )}
+                                {!isMeter && !isReadOnly && (
+                                  <div className="grid grid-cols-3 gap-1 mt-1">
+                                    <select
+                                      value={item.qualityTier || ''}
+                                      onChange={e => updateItem(room.id, item.id, { qualityTier: e.target.value as any || undefined })}
+                                      className="text-[10px] p-1 border rounded bg-white text-slate-500 outline-none"
+                                      title="Quality tier — for depreciation"
+                                    >
+                                      <option value="">Quality tier</option>
+                                      <option value="Budget">Budget</option>
+                                      <option value="Mid-range">Mid-range</option>
+                                      <option value="Premium">Premium</option>
+                                    </select>
+                                    <input
+                                      value={item.installedDate || ''}
+                                      onChange={e => updateItem(room.id, item.id, { installedDate: e.target.value })}
+                                      placeholder="Installed date"
+                                      className="text-[10px] p-1 border rounded bg-white text-slate-500 outline-none"
+                                      title="When installed/purchased — for fair wear and tear"
+                                    />
+                                    <input
+                                      value={item.purchasePrice || ''}
+                                      onChange={e => updateItem(room.id, item.id, { purchasePrice: e.target.value })}
+                                      placeholder="Purchase price"
+                                      className="text-[10px] p-1 border rounded bg-white text-slate-500 outline-none"
+                                      title="Original purchase price — for depreciation calculation"
+                                    />
+                                  </div>
+                                )}
+                                {!isMeter && isReadOnly && (item.qualityTier || item.installedDate || item.purchasePrice) && (
+                                  <div className="text-[10px] text-slate-400 mt-1 space-x-2">
+                                    {item.qualityTier && <span>{item.qualityTier}</span>}
+                                    {item.installedDate && <span>Installed: {item.installedDate}</span>}
+                                    {item.purchasePrice && <span>Cost: {item.purchasePrice}</span>}
+                                  </div>
                                 )}
                               </div>
 
@@ -1148,6 +1278,23 @@ const InventoryEditor = () => {
               />
               <div className="text-xs text-slate-700 leading-relaxed">
                 {DECLARATION_TEXT}
+              </div>
+            </label>
+          </div>
+
+          {/* No further defects declaration */}
+          <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={isReadOnly}
+                checked={inventory.noFurtherDefects || false}
+                onChange={e => updateInventory({ noFurtherDefects: e.target.checked })}
+                className="mt-1 w-5 h-5 accent-orange-600"
+              />
+              <div>
+                <p className="text-sm font-bold text-orange-800 mb-1">No Further Defects Declaration</p>
+                <p className="text-xs text-orange-700 leading-relaxed">I/We confirm that we have examined the property and its contents in full and have found no defects, damage or issues beyond those already recorded in this inventory. We understand that any defects not reported at this stage cannot be raised as pre-existing at check-out.</p>
               </div>
             </label>
           </div>

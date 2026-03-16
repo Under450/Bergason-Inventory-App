@@ -1,4 +1,3 @@
-
 export enum Condition {
   EXCELLENT = 'Excellent',
   GOOD = 'Good',
@@ -24,40 +23,51 @@ export enum MeterType {
 
 export interface Photo {
   id: string;
-  url: string; // Base64 data URI
+  url: string;
   timestamp: number;
   roomRef?: string;
-  itemRef?: string; // ID of the item this photo belongs to
+  itemRef?: string;
 }
 
 export interface InventoryItem {
   id: string;
-  name: string; // e.g., "Walls", "Ceiling", "Door"
+  name: string;
   condition: Condition;
   cleanliness: Cleanliness;
   description: string;
-  photos: string[]; // Array of Photo IDs
-  
-  // Specific fields for Appliances/Meters
+  photos: string[];
+
+  // Appliance/Meter fields
   make?: string;
   model?: string;
   serialNumber?: string;
-  workingStatus?: string; // 'Working', 'Not Tested', etc.
+  workingStatus?: string;
   meterType?: MeterType;
   supplier?: string;
+  accountNumber?: string;   // meter account number for utility claims
+
+  // Deposit evidence fields
+  qualityTier?: 'Budget' | 'Mid-range' | 'Premium';  // for depreciation calculation
+  installedDate?: string;   // e.g. "March 2021" — for fair wear and tear
+  purchasePrice?: string;   // e.g. "£450" — for depreciation at check-out
 }
 
 export interface Room {
   id: string;
-  name: string; // e.g., "Lounge", "Kitchen"
-  floorGroup?: string; // e.g. "Ground Floor"
+  name: string;
+  floorGroup?: string;
   items: InventoryItem[];
+
+  // Deposit evidence fields
+  odourNotes?: string;         // smell at check-in — critical for smoking/pet claims
+  decorationColour?: string;   // wall/ceiling colour — needed for redecoration claims
+  lastDecorated?: string;      // approx year — for fair wear and tear on decoration
 }
 
 export interface Document {
   id: string;
   name: string;
-  fileData: string | null; // Base64, null if not yet uploaded
+  fileData: string | null;
   uploadDate: number | null;
 }
 
@@ -71,8 +81,8 @@ export interface HealthSafetyCheck {
 export interface SignatureEntry {
   id: string;
   name: string;
-  type: 'Tenant' | 'Clerk' | 'Landlord' | 'Other';
-  data: string; // Base64 signature
+  type: string;
+  data: string;
   date: number;
 }
 
@@ -83,21 +93,25 @@ export interface Inventory {
   dateCreated: number;
   dateUpdated: number;
   status: 'DRAFT' | 'LOCKED';
-  
-  // New fields for Front Page
-  frontImage?: string; // Base64 of the main property photo
-  propertyId?: string;       // e.g. "BPS-00123"
+
+  frontImage?: string;
+  propertyId?: string;
   propertyDescription?: string;
-  propertyType?: string;   // e.g. "2 Bed House", "1 Bed Flat"
-  activeRoomIds?: string[]; // IDs of rooms included in this inventory
+  propertyType?: string;
+  activeRoomIds?: string[];
+
+  // Pre-tenancy condition — critical for cleaning/redecoration claims
+  preTenancyClean?: boolean;
+  preTenancyCleanDate?: string;
+  preTenancyCleanInvoiceRef?: string;
 
   healthSafetyChecks: HealthSafetyCheck[];
   rooms: Room[];
   documents: Document[];
-  
-  // Disclaimer / Sig section
+
   tenantPresent: boolean;
   declarationAgreed: boolean;
+  noFurtherDefects?: boolean;   // tenant confirms no undocumented defects
   signatures: SignatureEntry[];
   inspectorName: string;
 }
