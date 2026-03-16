@@ -142,6 +142,25 @@ export const CLEANLINESS_COLORS: Record<Cleanliness, string> = {
   [Cleanliness.DIRTY]: "bg-red-600 text-white border-red-700"
 };
 
+// Raw CSS values for <option> inline styles (Tailwind classes don't apply inside <select>)
+export const CONDITION_CSS: Record<Condition, { bg: string; color: string }> = {
+  [Condition.EXCELLENT]:      { bg: '#16a34a', color: '#fff' },
+  [Condition.GOOD]:           { bg: '#dcfce7', color: '#166534' },
+  [Condition.FAIR]:           { bg: '#fef9c3', color: '#854d0e' },
+  [Condition.CWA]:            { bg: '#dbeafe', color: '#1e40af' },
+  [Condition.POOR]:           { bg: '#ffedd5', color: '#9a3412' },
+  [Condition.NEEDS_ATTENTION]:{ bg: '#dc2626', color: '#fff' },
+};
+
+export const CLEANLINESS_CSS: Record<Cleanliness, { bg: string; color: string }> = {
+  [Cleanliness.PROFESSIONAL]: { bg: '#16a34a', color: '#fff' },
+  [Cleanliness.DOMESTIC]:     { bg: '#dbeafe', color: '#1e40af' },
+  [Cleanliness.GOOD]:         { bg: '#dcfce7', color: '#166534' },
+  [Cleanliness.FAIR]:         { bg: '#fef9c3', color: '#854d0e' },
+  [Cleanliness.POOR]:         { bg: '#ffedd5', color: '#9a3412' },
+  [Cleanliness.DIRTY]:        { bg: '#dc2626', color: '#fff' },
+};
+
 export const DISCLAIMER_TEXT = `The term ‘Inspector’ is used hereafter to define the Bergason Inventory user that is responsible for completing this property report. It is the duty and ultimate responsibility of the Inspector and Tenant to agree upon the accuracy of this report.
 
 This report has been prepared by an inspector who is not an expert in buildings, furnishings, decorations, woods, antiques or a qualified surveyor. This report relates only to the furniture and all the landlord’s equipment and contents in the property. It is no guarantee, or report on, the adequacy of, or safety of, any such equipment or contents, merely a record that such items exist in the property at the date of preparing the report and the superficial condition of same.

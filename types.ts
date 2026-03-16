@@ -86,6 +86,7 @@ export interface Inventory {
   
   // New fields for Front Page
   frontImage?: string; // Base64 of the main property photo
+  propertyId?: string;       // e.g. "BPS-00123"
   propertyDescription?: string;
   propertyType?: string;   // e.g. "2 Bed House", "1 Bed Flat"
   activeRoomIds?: string[]; // IDs of rooms included in this inventory

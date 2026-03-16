@@ -24,6 +24,8 @@ export interface FirestoreInventory {
   completedRooms: string[];
   tenantSignature?: string;
   tenantReviewCompletedAt?: number;
+  originalPdfUrl?: string;   // PDF 1 – original signed inventory
+  reviewPdfUrl?: string;     // PDF 2 – tenant review report
 }
 
 export const saveInventoryToFirestore = async (

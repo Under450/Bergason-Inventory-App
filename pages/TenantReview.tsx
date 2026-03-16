@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getInventoryByToken, updateTenantProgress, FirestoreInventory, TenantReviewData } from '../services/inventory';
+import { captureElementAsPDF } from '../services/pdf';
+import { uploadPDFToStorage } from '../services/storage';
 import { SignaturePad } from '../components/SignaturePad';
 import { uploadImage } from '../services/cloudinary';
 import { Photo } from '../types';
@@ -26,8 +28,11 @@ const TenantReview: React.FC = () => {
   const [completedRooms, setCompletedRooms] = useState<string[]>([]);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+  const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState('');
   const [uploadingItem, setUploadingItem] = useState<string | null>(null);
+  const reviewReportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!token) { setStage('error'); return; }
@@ -134,15 +139,34 @@ const TenantReview: React.FC = () => {
   const handleSubmit = async (signatureData: string) => {
     if (!token) return;
     setSaving(true);
+    const completedAt = Date.now();
     try {
+      // Step 1 – save signature + mark completed
+      setSaveStatus('Saving your review...');
       await updateTenantProgress(token, {
         tenantSignature: signatureData,
-        tenantReviewCompletedAt: Date.now(),
+        tenantReviewCompletedAt: completedAt,
         status: 'completed',
       });
+
+      // Step 2 – generate review report PDF
+      setSaveStatus('Generating PDF report...');
+      if (reviewReportRef.current) {
+        try {
+          const pdfBlob = await captureElementAsPDF(reviewReportRef.current);
+          setSaveStatus('Uploading PDF...');
+          const pdfUrl = await uploadPDFToStorage(pdfBlob, `pdfs/${token}/review.pdf`);
+          await updateTenantProgress(token, { reviewPdfUrl: pdfUrl });
+          setReviewPdfUrl(pdfUrl);
+        } catch (pdfErr) {
+          console.warn('Review PDF generation failed (non-fatal):', pdfErr);
+        }
+      }
+
       setStage('complete');
     } finally {
       setSaving(false);
+      setSaveStatus('');
     }
   };
 
@@ -574,11 +598,13 @@ const TenantReview: React.FC = () => {
             <p className="text-xs text-slate-400 mb-4">
               {data?.tenantName} — {formatDate(Date.now())}
             </p>
-            <SignaturePad onSave={handleSubmit} onClear={() => {}} />
-            {saving && (
-              <p className="text-center text-sm text-slate-400 mt-3">
-                <i className="fas fa-circle-notch fa-spin mr-2" />Submitting your review...
-              </p>
+            {saving ? (
+              <div className="py-8 text-center">
+                <i className="fas fa-circle-notch fa-spin text-3xl text-slate-400 mb-3 block"></i>
+                <p className="text-sm font-bold text-slate-600">{saveStatus}</p>
+              </div>
+            ) : (
+              <SignaturePad onSave={handleSubmit} onClear={() => {}} />
             )}
           </div>
         </div>
@@ -595,20 +621,116 @@ const TenantReview: React.FC = () => {
 
   // ── COMPLETE ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <div className="text-center max-w-sm">
-        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <i className="fas fa-check-circle text-green-500 text-4xl" />
+    <>
+      {/* Hidden review report for PDF generation – rendered off-screen */}
+      <div
+        ref={reviewReportRef}
+        style={{ position: 'fixed', top: 0, left: '-10000px', width: '794px', backgroundColor: '#fff', padding: '40px', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', color: '#1e293b' }}
+      >
+        {/* PDF Header */}
+        <div style={{ textAlign: 'center', borderBottom: '3px double #d4af37', paddingBottom: '24px', marginBottom: '32px' }}>
+          <div style={{ backgroundColor: '#0f172a', display: 'inline-block', padding: '12px 24px', marginBottom: '12px' }}>
+            <div style={{ color: '#d4af37', fontSize: '20px', fontWeight: 'bold', letterSpacing: '2px' }}>BERGASON</div>
+            <div style={{ color: '#fff', fontSize: '9px', letterSpacing: '4px', textAlign: 'center' }}>PROPERTY SERVICES</div>
+          </div>
+          <h1 style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '2px', marginTop: '8px' }}>
+            Tenant Review Report
+          </h1>
+          <p style={{ color: '#64748b', marginTop: '4px' }}>{data?.inventory.address}</p>
+          <p style={{ color: '#64748b', fontSize: '12px' }}>Original Inventory: {formatDate(data?.inventory.dateCreated ?? 0)}</p>
+          {data?.tenantReviewCompletedAt && <p style={{ color: '#64748b', fontSize: '12px' }}>Review Completed: {formatDate(data.tenantReviewCompletedAt)}</p>}
+          <p style={{ color: '#64748b', fontSize: '12px' }}>Tenant: {data?.tenantName}</p>
         </div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-3">Review Submitted</h1>
-        <p className="text-slate-600 mb-4">
-          Thank you. Your review has been signed and submitted to Bergason Property Services.
-        </p>
-        <p className="text-slate-400 text-sm">
-          Any disputes you raised have been recorded and will be reviewed. You do not need to take any further action.
-        </p>
+
+        {/* Summary */}
+        {data && (() => {
+          const agreed = Object.values(review).filter(r => r.agreed).length;
+          const disputed = Object.values(review).filter(r => !r.agreed).length;
+          return (
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '24px' }}>
+              <div style={{ flex: 1, backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#16a34a' }}>{agreed}</div>
+                <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: 'bold', textTransform: 'uppercase' }}>Items Agreed</div>
+              </div>
+              <div style={{ flex: 1, backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ea580c' }}>{disputed}</div>
+                <div style={{ fontSize: '11px', color: '#ea580c', fontWeight: 'bold', textTransform: 'uppercase' }}>Items Disputed</div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Rooms */}
+        {rooms.map(room => (
+          <div key={room.id} style={{ marginBottom: '24px', pageBreakInside: 'avoid' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 'bold', backgroundColor: '#0f172a', color: '#fff', padding: '8px 12px', marginBottom: '0' }}>{room.name}</h2>
+            {room.items.map(item => {
+              const r = review[item.id];
+              const photos = item.photos.map(p => JSON.parse(p) as Photo);
+              return (
+                <div key={item.id} style={{ borderBottom: '1px solid #e2e8f0', padding: '10px 12px', backgroundColor: r?.agreed === false ? '#fff7ed' : '#fff' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <strong style={{ fontSize: '13px' }}>{item.name}</strong>
+                    <span style={{ fontSize: '11px', fontWeight: 'bold', color: r?.agreed ? '#16a34a' : '#ea580c', backgroundColor: r?.agreed ? '#f0fdf4' : '#fff7ed', padding: '2px 8px', borderRadius: '12px' }}>
+                      {r?.agreed ? '✅ Agreed' : '❌ Disputed'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                    Condition: {item.condition} &nbsp;|&nbsp; Cleanliness: {item.cleanliness}
+                  </div>
+                  {item.description && <div style={{ fontSize: '12px', color: '#475569', fontStyle: 'italic', marginTop: '3px' }}>"{item.description}"</div>}
+                  {photos.length > 0 && (
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      {photos.map(ph => <img key={ph.id} src={ph.url} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px' }} crossOrigin="anonymous" />)}
+                    </div>
+                  )}
+                  {r?.agreed === false && r.comment && (
+                    <div style={{ marginTop: '6px', backgroundColor: '#ffedd5', padding: '6px 10px', borderRadius: '4px', fontSize: '12px', color: '#9a3412' }}>
+                      <strong>Tenant comment:</strong> {r.comment}
+                    </div>
+                  )}
+                  {r?.photos && r.photos.length > 0 && (
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                      {r.photos.map((url, i) => <img key={i} src={url} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '2px solid #fed7aa' }} crossOrigin="anonymous" />)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Tenant signature */}
+        {data?.tenantSignature && (
+          <div style={{ marginTop: '32px', borderTop: '2px solid #e2e8f0', paddingTop: '16px' }}>
+            <p style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>Tenant Signature — {data.tenantName} — {formatDate(data.tenantReviewCompletedAt ?? Date.now())}</p>
+            <img src={data.tenantSignature} alt="Tenant Signature" style={{ maxWidth: '300px', height: '80px', objectFit: 'contain' }} />
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Complete screen */}
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <i className="fas fa-check-circle text-green-500 text-4xl" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-3">Review Submitted</h1>
+          <p className="text-slate-600 mb-4">
+            Thank you, {data?.tenantName}. Your review has been signed and submitted to Bergason Property Services.
+          </p>
+          {reviewPdfUrl && (
+            <a href={reviewPdfUrl} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-bergason-navy text-white px-5 py-3 rounded-xl font-bold text-sm mb-4 hover:bg-slate-700">
+              <i className="fas fa-file-pdf text-red-400"></i> Download Your Review PDF
+            </a>
+          )}
+          <p className="text-slate-400 text-sm">
+            Any disputes you raised have been recorded and will be reviewed. You do not need to take any further action.
+          </p>
+        </div>
+      </div>
+    </>
   );
 };
 

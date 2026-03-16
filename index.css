@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "@fortawesome/fontawesome-free/css/all.min.css";
+
+/* Bergason custom theme tokens */
+@theme {
+  --color-bergason-navy: #0f172a;
+  --color-bergason-gold: #d4af37;
+
+  --font-sans: "DM Sans", sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}

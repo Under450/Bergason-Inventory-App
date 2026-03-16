@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
-import { saveInventoryToFirestore } from './services/inventory';
+import { saveInventoryToFirestore, updateTenantProgress } from './services/inventory';
+import { captureElementAsPDF } from './services/pdf';
+import { uploadPDFToStorage } from './services/storage';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
 import { generateId, formatDate, formatDateTime } from './utils';
 import { uploadImage } from './services/cloudinary';
@@ -15,6 +17,8 @@ import {
   REQUIRED_DOCUMENTS_LIST,
   CONDITION_COLORS,
   CLEANLINESS_COLORS,
+  CONDITION_CSS,
+  CLEANLINESS_CSS,
   CONDITION_ICONS,
   CLEANLINESS_ICONS,
   HS_QUESTIONS,
@@ -336,6 +340,7 @@ const InventoryEditor = () => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
 
+  const reportRef = useRef<HTMLDivElement>(null);
   const [signerName, setSignerName] = useState("");
   const [signerType, setSignerType] = useState<'Tenant' | 'Clerk' | 'Other'>("Tenant");
   const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
@@ -344,7 +349,9 @@ const InventoryEditor = () => {
   const [tenantName, setTenantName] = useState('');
   const [tenantEmail, setTenantEmail] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState('');
   const [sentLink, setSentLink] = useState<string | null>(null);
+  const [sentPdfUrl, setSentPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -543,7 +550,7 @@ const InventoryEditor = () => {
       )}
 
       {isPreviewMode && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-bergason-navy text-white p-4 flex justify-between items-center print:hidden shadow-xl">
+        <div data-pdf-hide="true" className="fixed top-0 left-0 right-0 z-50 bg-bergason-navy text-white p-4 flex justify-between items-center print:hidden shadow-xl">
           <button
             onClick={() => setIsPreviewMode(false)}
             className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded text-sm font-semibold backdrop-blur"
@@ -559,14 +566,14 @@ const InventoryEditor = () => {
         </div>
       )}
 
-      <div className={`max-w-[210mm] mx-auto bg-white min-h-screen ${isPreviewMode ? 'pt-20 print:pt-0' : 'p-4 md:p-8'}`}>
+      <div ref={reportRef} className={`max-w-[210mm] mx-auto bg-white min-h-screen ${isPreviewMode ? 'pt-20 print:pt-0' : 'p-4 md:p-8'}`}>
 
         {/* REPORT HEADER */}
         <div className="text-center py-8 border-b-4 border-double border-bergason-gold mb-10">
           <div className="flex justify-center mb-6">
             <BergasonLogo />
           </div>
-          <h1 className="font-serif text-3xl font-bold text-slate-900 uppercase tracking-widest mt-4">
+          <h1 className="font-sans text-3xl font-bold text-slate-900 uppercase tracking-widest mt-4">
             Inventory & Schedule of Condition
           </h1>
         </div>
@@ -625,6 +632,26 @@ const InventoryEditor = () => {
                 placeholder="Enter full address of the property"
                 className={`w-full text-2xl font-serif font-medium text-slate-800 border-b ${isReadOnly ? 'border-transparent' : 'border-slate-200'} focus:border-bergason-navy outline-none py-1 placeholder:font-sans placeholder:text-slate-300`}
               />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                Property ID
+              </label>
+              <input
+                value={inventory.propertyId || ''}
+                readOnly={isReadOnly}
+                onChange={(e) => updateInventory({ propertyId: e.target.value })}
+                placeholder="e.g. BPS-00123"
+                className={`w-full text-base font-mono font-medium text-slate-800 border-b ${isReadOnly ? 'border-transparent' : 'border-slate-200'} focus:border-bergason-navy outline-none py-1 placeholder:font-sans placeholder:text-slate-300`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                Property Type
+              </label>
+              <div className="text-base text-slate-700 py-1">{inventory.propertyType || '—'}</div>
             </div>
 
             <div className="md:col-span-2">
@@ -749,8 +776,11 @@ const InventoryEditor = () => {
                       isExpanded ? 'bg-slate-100 border-b border-slate-200' : 'bg-white hover:bg-slate-50'
                     }`}
                   >
-                    <h3 className={`font-serif font-bold text-xl ${isRoomActive ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
+                    <h3 className={`font-serif font-bold text-xl flex items-center gap-2 ${isRoomActive ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
                       {roomIndex + 1}. {room.name}
+                      {room.items.some(i => i.photos.length > 0) && (
+                        <i className="fas fa-camera text-red-500 text-sm" title="This room has photos"></i>
+                      )}
                     </h3>
                     <div className="flex items-center gap-2">
                       {!isReadOnly && (
@@ -877,9 +907,12 @@ const InventoryEditor = () => {
                                       <select
                                         value={item.condition}
                                         onChange={(e) => updateItem(room.id, item.id, { condition: e.target.value as Condition })}
-                                        className={`w-full text-xs p-1 rounded border-l-4 ${CONDITION_COLORS[item.condition]} bg-white border-slate-200 outline-none`}
+                                        className="w-full text-xs p-1 rounded border-l-4 outline-none font-semibold"
+                                        style={{ backgroundColor: CONDITION_CSS[item.condition].bg, color: CONDITION_CSS[item.condition].color, borderLeftColor: CONDITION_CSS[item.condition].bg }}
                                       >
-                                        {Object.values(Condition).map(c => <option key={c} value={c}>{c}</option>)}
+                                        {Object.values(Condition).map(c => (
+                                          <option key={c} value={c} style={{ backgroundColor: CONDITION_CSS[c].bg, color: CONDITION_CSS[c].color }}>{c}</option>
+                                        ))}
                                       </select>
                                     </div>
                                   )
@@ -911,9 +944,12 @@ const InventoryEditor = () => {
                                       <select
                                         value={item.cleanliness}
                                         onChange={(e) => updateItem(room.id, item.id, { cleanliness: e.target.value as Cleanliness })}
-                                        className={`w-full text-xs p-1 rounded border-l-4 ${CLEANLINESS_COLORS[item.cleanliness]} bg-white border-slate-200 outline-none`}
+                                        className="w-full text-xs p-1 rounded border-l-4 outline-none font-semibold"
+                                        style={{ backgroundColor: CLEANLINESS_CSS[item.cleanliness].bg, color: CLEANLINESS_CSS[item.cleanliness].color, borderLeftColor: CLEANLINESS_CSS[item.cleanliness].bg }}
                                       >
-                                        {Object.values(Cleanliness).map(c => <option key={c} value={c}>{c}</option>)}
+                                        {Object.values(Cleanliness).map(c => (
+                                          <option key={c} value={c} style={{ backgroundColor: CLEANLINESS_CSS[c].bg, color: CLEANLINESS_CSS[c].color }}>{c}</option>
+                                        ))}
                                       </select>
                                     </div>
                                   )
@@ -933,9 +969,12 @@ const InventoryEditor = () => {
 
                                     return (
                                       <a
-                                        href={`#photo-vault-${globalIdx}`}
+                                        href={photo.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
                                         key={idx}
                                         className="flex items-center gap-1 bg-slate-100 hover:bg-bergason-gold hover:text-white px-2 py-1 rounded text-[10px] font-bold text-slate-600 transition-colors border border-slate-200"
+                                        title="Click to view full-size photo"
                                       >
                                         <i className="fas fa-camera"></i>
                                         Ref #{globalIdx}
@@ -1115,7 +1154,7 @@ const InventoryEditor = () => {
           )}
 
           {!isPreviewMode && inventory.signatures.length > 0 && (
-            <div className="mt-8 space-y-3">
+            <div className="mt-8 space-y-3" data-pdf-hide="true">
               {/* Send to Tenant */}
               <div className="text-center">
                 <Button
@@ -1125,22 +1164,36 @@ const InventoryEditor = () => {
                   <i className="fas fa-paper-plane mr-2"></i> Send to Tenant for Review
                 </Button>
                 {sentLink && (
-                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg text-left">
-                    <p className="text-xs font-bold text-green-700 mb-1">✅ Saved — share this link with the tenant:</p>
-                    <div className="flex gap-2 items-center">
-                      <input readOnly value={sentLink} className="flex-1 text-xs p-2 border rounded bg-white text-slate-600 font-mono" />
-                      <button
-                        onClick={() => { navigator.clipboard.writeText(sentLink); }}
-                        className="text-xs bg-green-600 text-white px-3 py-2 rounded font-bold whitespace-nowrap"
-                      >
-                        Copy
-                      </button>
+                  <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl text-left space-y-3">
+                    <p className="text-sm font-bold text-green-700">✅ Inventory saved &amp; PDF generated</p>
+
+                    {sentPdfUrl && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase mb-1">PDF 1 — Original Inventory</p>
+                        <a href={sentPdfUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-mono truncate">
+                          <i className="fas fa-file-pdf text-red-500"></i>
+                          <span className="truncate">{sentPdfUrl}</span>
+                        </a>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase mb-1">Tenant Review Link</p>
+                      <div className="flex gap-2 items-center">
+                        <input readOnly value={sentLink} className="flex-1 text-xs p-2 border rounded bg-white text-slate-600 font-mono" />
+                        <button onClick={() => navigator.clipboard.writeText(sentLink)}
+                          className="text-xs bg-green-600 text-white px-3 py-2 rounded font-bold whitespace-nowrap">
+                          Copy
+                        </button>
+                      </div>
                     </div>
+
                     <a
-                      href={`mailto:?subject=Your Inventory Review — ${inventory.address}&body=Please review your inventory at: ${sentLink}%0A%0AYou have 5 days to complete your review.`}
-                      className="block mt-2 text-xs text-center bg-[#0f172a] text-white py-2 rounded font-bold"
+                      href={`mailto:${tenantEmail}?subject=Your Inventory Review — ${encodeURIComponent(inventory.address)}&body=Dear ${encodeURIComponent(tenantName)},%0A%0APlease review your inventory report at:%0A${encodeURIComponent(sentLink)}%0A%0AYou have 5 days to complete your review.%0A%0A${sentPdfUrl ? `The original signed inventory PDF is available at:%0A${encodeURIComponent(sentPdfUrl)}%0A%0A` : ''}Kind regards,%0ABergason Property Services`}
+                      className="block text-xs text-center bg-bergason-navy text-white py-2.5 rounded-lg font-bold"
                     >
-                      <i className="fas fa-envelope mr-1"></i> Open in Email
+                      <i className="fas fa-envelope mr-2"></i> Open Email to Tenant
                     </a>
                   </div>
                 )}
@@ -1170,61 +1223,90 @@ const InventoryEditor = () => {
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
                 <h3 className="font-bold text-xl text-slate-800 mb-1">Send to Tenant</h3>
                 <p className="text-sm text-slate-500 mb-5">
-                  The tenant will receive a unique link to review the full inventory online. They have 5 days to agree or dispute each item and sign.
+                  The inventory will be saved as PDF 1 to Firebase, then the tenant receives a unique 5-day review link.
                 </p>
-                <div className="space-y-3 mb-5">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Full Name</label>
-                    <input
-                      value={tenantName}
-                      onChange={e => setTenantName(e.target.value)}
-                      placeholder="e.g. Joe Bloggs"
-                      className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400"
-                    />
+
+                {sending ? (
+                  <div className="py-8 text-center">
+                    <i className="fas fa-circle-notch fa-spin text-3xl text-amber-500 mb-3 block"></i>
+                    <p className="text-sm font-bold text-slate-700">{sendStatus}</p>
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Email Address</label>
-                    <input
-                      type="email"
-                      value={tenantEmail}
-                      onChange={e => setTenantEmail(e.target.value)}
-                      placeholder="e.g. tenant@email.com"
-                      className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowSendModal(false)}
-                    className="flex-1 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={!tenantName.trim() || !tenantEmail.trim() || sending}
-                    onClick={async () => {
-                      if (!inventory) return;
-                      setSending(true);
-                      try {
-                        const token = await saveInventoryToFirestore(inventory, tenantEmail.trim(), tenantName.trim());
-                        const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
-                        setSentLink(link);
-                        setShowSendModal(false);
-                      } catch {
-                        alert('Failed to save. Please check your connection and try again.');
-                      } finally {
-                        setSending(false);
-                      }
-                    }}
-                    className={`flex-1 py-3 rounded-lg text-sm font-bold text-white transition-colors ${
-                      !tenantName.trim() || !tenantEmail.trim() || sending
-                        ? 'bg-slate-300 cursor-not-allowed'
-                        : 'bg-amber-500 hover:bg-amber-600'
-                    }`}
-                  >
-                    {sending ? <><i className="fas fa-circle-notch fa-spin mr-2" />Saving...</> : 'Generate Link'}
-                  </button>
-                </div>
+                ) : (
+                  <>
+                    <div className="space-y-3 mb-5">
+                      <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Full Name</label>
+                        <input
+                          value={tenantName}
+                          onChange={e => setTenantName(e.target.value)}
+                          placeholder="e.g. Joe Bloggs"
+                          className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Email Address</label>
+                        <input
+                          type="email"
+                          value={tenantEmail}
+                          onChange={e => setTenantEmail(e.target.value)}
+                          placeholder="e.g. tenant@email.com"
+                          className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:border-amber-400"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowSendModal(false)}
+                        className="flex-1 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-500"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        disabled={!tenantName.trim() || !tenantEmail.trim()}
+                        onClick={async () => {
+                          if (!inventory || !reportRef.current) return;
+                          setSending(true);
+                          try {
+                            // Step 1 – save to Firestore & get token
+                            setSendStatus('Saving to database...');
+                            const token = await saveInventoryToFirestore(inventory, tenantEmail.trim(), tenantName.trim());
+
+                            // Step 2 – generate PDF from the report element
+                            setSendStatus('Generating PDF...');
+                            let pdfUrl: string | null = null;
+                            try {
+                              const pdfBlob = await captureElementAsPDF(reportRef.current);
+                              setSendStatus('Uploading PDF...');
+                              pdfUrl = await uploadPDFToStorage(pdfBlob, `pdfs/${token}/original.pdf`);
+                              await updateTenantProgress(token, { originalPdfUrl: pdfUrl });
+                            } catch (pdfErr) {
+                              const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+                              console.warn('PDF generation failed:', msg);
+                              alert(`PDF generation failed: ${msg}\n\nThe review link has still been created. You can try generating the PDF again later.`);
+                            }
+
+                            const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
+                            setSentLink(link);
+                            if (pdfUrl) setSentPdfUrl(pdfUrl);
+                            setShowSendModal(false);
+                          } catch {
+                            alert('Failed to save. Please check your connection and try again.');
+                          } finally {
+                            setSending(false);
+                            setSendStatus('');
+                          }
+                        }}
+                        className={`flex-1 py-3 rounded-lg text-sm font-bold text-white transition-colors ${
+                          !tenantName.trim() || !tenantEmail.trim()
+                            ? 'bg-slate-300 cursor-not-allowed'
+                            : 'bg-amber-500 hover:bg-amber-600'
+                        }`}
+                      >
+                        Generate PDF &amp; Send Link
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
