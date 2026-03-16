@@ -3,14 +3,15 @@ import { app } from './firebase';
 
 const functions = getFunctions(app, 'europe-west2');
 
-interface SendEmailParams {
-  type: 'original' | 'review';
+export interface SendEmailParams {
+  type: 'signature_request' | 'signature_confirmation' | 'review_link' | 'review_complete';
   tenantEmail: string;
   tenantName: string;
   address: string;
   pdfStoragePath: string;
   firestoreToken: string;
-  reviewLink?: string;
+  signLink?: string;    // for signature_request
+  reviewLink?: string;  // for review_link
 }
 
 export const sendInventoryEmail = async (params: SendEmailParams): Promise<string> => {

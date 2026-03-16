@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
-import { saveInventoryToFirestore, updateTenantProgress } from './services/inventory';
+import TenantSign from './pages/TenantSign';
+import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { uploadPDFToStorage } from './services/storage';
 import { sendInventoryEmail } from './services/email';
@@ -347,14 +348,20 @@ const InventoryEditor = () => {
   const [signerType, setSignerType] = useState<'Tenant' | 'Clerk' | 'Other'>("Tenant");
   const [uploadingItems, setUploadingItems] = useState<Set<string>>(new Set());
   const [frontImageUploading, setFrontImageUploading] = useState(false);
-  const [showSendModal, setShowSendModal] = useState(false);
+  // Stage 1 — Send for Signature
+  const [showSignModal, setShowSignModal] = useState(false);
   const [tenantName, setTenantName] = useState('');
   const [tenantEmail, setTenantEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState('');
-  const [sentLink, setSentLink] = useState<string | null>(null);
+  const [signToken, setSignToken] = useState<string | null>(null);
   const [sentPdfUrl, setSentPdfUrl] = useState<string | null>(null);
   const [dispatchRef, setDispatchRef] = useState<string | null>(null);
+  // Stage 2 — Send Review Link
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewSending, setReviewSending] = useState(false);
+  const [reviewSentLink, setReviewSentLink] = useState<string | null>(null);
+  const [reviewDispatchRef, setReviewDispatchRef] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -1157,57 +1164,84 @@ const InventoryEditor = () => {
           )}
 
           {!isPreviewMode && inventory.signatures.length > 0 && (
-            <div className="mt-8 space-y-3" data-pdf-hide="true">
-              {/* Send to Tenant */}
-              <div className="text-center">
-                <Button
-                  onClick={() => setShowSendModal(true)}
-                  className="w-full md:w-auto bg-amber-500 hover:bg-amber-600 text-white"
-                >
-                  <i className="fas fa-paper-plane mr-2"></i> Send to Tenant for Review
-                </Button>
-                {sentLink && (
-                  <div className="mt-3 p-4 bg-green-50 border border-green-200 rounded-xl text-left space-y-3">
-                    <p className="text-sm font-bold text-green-700">✅ Inventory saved, PDF generated &amp; email sent</p>
+            <div className="mt-8 space-y-4" data-pdf-hide="true">
+
+              {/* ── STAGE 1 — Send for Signature ── */}
+              <div>
+                {!signToken ? (
+                  <Button
+                    onClick={() => setShowSignModal(true)}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                  >
+                    <i className="fas fa-pen-nib mr-2"></i> Send for Signature
+                  </Button>
+                ) : (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-3">
+                    <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Stage 1 complete — signature request sent</p>
                     {dispatchRef && (
                       <div className="bg-white border border-green-300 rounded-lg px-3 py-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Dispatch Reference</p>
                         <p className="text-base font-bold text-bergason-navy font-mono">{dispatchRef}</p>
-                        <p className="text-[10px] text-slate-400">Confirmation sent to {OFFICE_EMAIL_DISPLAY} — keep this reference for adjudication</p>
+                        <p className="text-[10px] text-slate-400">Confirmation sent to {OFFICE_EMAIL_DISPLAY}</p>
                       </div>
                     )}
-
                     {sentPdfUrl && (
-                      <div>
-                        <p className="text-xs font-bold text-slate-500 uppercase mb-1">PDF 1 — Original Inventory</p>
-                        <a href={sentPdfUrl} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-mono truncate">
-                          <i className="fas fa-file-pdf text-red-500"></i>
-                          <span className="truncate">{sentPdfUrl}</span>
-                        </a>
-                      </div>
+                      <a href={sentPdfUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-50 font-mono truncate">
+                        <i className="fas fa-file-pdf text-red-500"></i>
+                        <span className="truncate">PDF 1 — Original Inventory</span>
+                      </a>
                     )}
-
                     <div>
-                      <p className="text-xs font-bold text-slate-500 uppercase mb-1">Tenant Review Link</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Tenant Signature Link</p>
                       <div className="flex gap-2 items-center">
-                        <input readOnly value={sentLink} className="flex-1 text-xs p-2 border rounded bg-white text-slate-600 font-mono" />
-                        <button onClick={() => navigator.clipboard.writeText(sentLink)}
+                        <input readOnly value={`${window.location.origin}${window.location.pathname}#/sign/${signToken}`}
+                          className="flex-1 text-xs p-2 border rounded bg-white text-slate-600 font-mono" />
+                        <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#/sign/${signToken}`)}
                           className="text-xs bg-green-600 text-white px-3 py-2 rounded font-bold whitespace-nowrap">
                           Copy
                         </button>
                       </div>
                     </div>
-
-                    <a
-                      href={`mailto:${tenantEmail}?subject=Your Inventory Review — ${encodeURIComponent(inventory.address)}&body=Dear ${encodeURIComponent(tenantName)},%0A%0APlease review your inventory report at:%0A${encodeURIComponent(sentLink)}%0A%0AYou have 5 days to complete your review.%0A%0A${sentPdfUrl ? `The original signed inventory PDF is available at:%0A${encodeURIComponent(sentPdfUrl)}%0A%0A` : ''}Kind regards,%0ABergason Property Services`}
-                      className="block text-xs text-center bg-bergason-navy text-white py-2.5 rounded-lg font-bold"
-                    >
-                      <i className="fas fa-envelope mr-2"></i> Open Email to Tenant
-                    </a>
                   </div>
                 )}
               </div>
+
+              {/* ── STAGE 2 — Send Review Link (move-in day) ── */}
+              {signToken && (
+                <div>
+                  {!reviewSentLink ? (
+                    <Button
+                      onClick={() => setShowReviewModal(true)}
+                      className="w-full bg-bergason-navy hover:bg-slate-700 text-white"
+                    >
+                      <i className="fas fa-clock mr-2"></i> Send Review Link (Move-In Day)
+                    </Button>
+                  ) : (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+                      <p className="text-sm font-bold text-blue-700"><i className="fas fa-check-circle mr-1"></i> Stage 2 complete — 5-day review link sent</p>
+                      {reviewDispatchRef && (
+                        <div className="bg-white border border-blue-300 rounded-lg px-3 py-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Dispatch Reference</p>
+                          <p className="text-base font-bold text-bergason-navy font-mono">{reviewDispatchRef}</p>
+                          <p className="text-[10px] text-slate-400">Day 3 &amp; Day 5 reminders scheduled. Expiry proof sent to {OFFICE_EMAIL_DISPLAY} on Day 6 if not completed.</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Tenant Review Link</p>
+                        <div className="flex gap-2 items-center">
+                          <input readOnly value={reviewSentLink}
+                            className="flex-1 text-xs p-2 border rounded bg-white text-slate-600 font-mono" />
+                          <button onClick={() => navigator.clipboard.writeText(reviewSentLink)}
+                            className="text-xs bg-blue-600 text-white px-3 py-2 rounded font-bold whitespace-nowrap">
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Lock Inventory */}
               {!isLocked && inventory.declarationAgreed && (
@@ -1227,15 +1261,14 @@ const InventoryEditor = () => {
             </div>
           )}
 
-          {/* Send to Tenant Modal */}
-          {showSendModal && (
+          {/* ── Stage 1 Modal — Send for Signature ── */}
+          {showSignModal && (
             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-                <h3 className="font-bold text-xl text-slate-800 mb-1">Send to Tenant</h3>
+                <h3 className="font-bold text-xl text-slate-800 mb-1">Send for Signature</h3>
                 <p className="text-sm text-slate-500 mb-5">
-                  The inventory will be saved as PDF 1 to Firebase, then the tenant receives a unique 5-day review link.
+                  The inventory PDF will be saved to Firebase and the tenant will receive a digital signature link.
                 </p>
-
                 {sending ? (
                   <div className="py-8 text-center">
                     <i className="fas fa-circle-notch fa-spin text-3xl text-amber-500 mb-3 block"></i>
@@ -1266,7 +1299,7 @@ const InventoryEditor = () => {
                     </div>
                     <div className="flex gap-3">
                       <button
-                        onClick={() => setShowSendModal(false)}
+                        onClick={() => setShowSignModal(false)}
                         className="flex-1 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-500"
                       >
                         Cancel
@@ -1277,11 +1310,9 @@ const InventoryEditor = () => {
                           if (!inventory || !reportRef.current) return;
                           setSending(true);
                           try {
-                            // Step 1 – save to Firestore & get token
                             setSendStatus('Saving to database...');
                             const token = await saveInventoryToFirestore(inventory, tenantEmail.trim(), tenantName.trim());
 
-                            // Step 2 – generate PDF from the report element
                             setSendStatus('Generating PDF...');
                             let pdfUrl: string | null = null;
                             try {
@@ -1290,29 +1321,31 @@ const InventoryEditor = () => {
                               const storagePath = `pdfs/${token}/original.pdf`;
                               pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
                               await updateTenantProgress(token, { originalPdfUrl: pdfUrl });
+                            } catch (pdfErr) {
+                              console.warn('PDF generation/upload failed:', pdfErr);
+                            }
 
-                              setSendStatus('Sending email...');
-                              const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
+                            setSendStatus('Sending signature request email...');
+                            const signLink = `${window.location.origin}${window.location.pathname}#/sign/${token}`;
+                            try {
                               const ref = await sendInventoryEmail({
-                                type: 'original',
+                                type: 'signature_request',
                                 tenantEmail: tenantEmail.trim(),
                                 tenantName: tenantName.trim(),
                                 address: inventory.address,
-                                pdfStoragePath: storagePath,
+                                pdfStoragePath: pdfUrl ? `pdfs/${token}/original.pdf` : '',
                                 firestoreToken: token,
-                                reviewLink: link,
+                                signLink,
                               });
                               setDispatchRef(ref);
-                            } catch (pdfErr) {
-                              const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
-                              console.warn('PDF/email failed:', msg);
-                              alert(`PDF or email step failed: ${msg}\n\nThe review link has still been created.`);
+                            } catch (emailErr) {
+                              console.warn('Email failed:', emailErr);
+                              alert('Email failed to send, but the signature link has been created. You can copy it manually.');
                             }
 
-                            const link = `${window.location.origin}${window.location.pathname}#/review/${token}`;
-                            setSentLink(link);
+                            setSignToken(token);
                             if (pdfUrl) setSentPdfUrl(pdfUrl);
-                            setShowSendModal(false);
+                            setShowSignModal(false);
                           } catch {
                             alert('Failed to save. Please check your connection and try again.');
                           } finally {
@@ -1326,10 +1359,71 @@ const InventoryEditor = () => {
                             : 'bg-amber-500 hover:bg-amber-600'
                         }`}
                       >
-                        Generate PDF &amp; Send Link
+                        Generate PDF &amp; Send
                       </button>
                     </div>
                   </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Stage 2 Modal — Send Review Link ── */}
+          {showReviewModal && signToken && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                <h3 className="font-bold text-xl text-slate-800 mb-1">Send Review Link</h3>
+                <p className="text-sm text-slate-500 mb-4">
+                  Send the tenant their 5-day review link. Day 3 and Day 5 reminders will be sent automatically. If not completed, an expiry proof email is sent to you on Day 6.
+                </p>
+                <div className="bg-slate-50 rounded-lg p-3 mb-5 text-sm text-slate-600 space-y-1">
+                  <div className="flex justify-between"><span className="text-slate-400 font-medium">Tenant</span><span>{tenantName}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400 font-medium">Email</span><span className="truncate ml-4">{tenantEmail}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400 font-medium">Property</span><span className="truncate ml-4">{inventory.address}</span></div>
+                </div>
+                {reviewSending ? (
+                  <div className="py-6 text-center">
+                    <i className="fas fa-circle-notch fa-spin text-3xl text-bergason-navy mb-3 block"></i>
+                    <p className="text-sm font-bold text-slate-700">Activating review link &amp; sending email…</p>
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowReviewModal(false)}
+                      className="flex-1 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setReviewSending(true);
+                        try {
+                          await activateReviewLink(signToken);
+                          const link = `${window.location.origin}${window.location.pathname}#/review/${signToken}`;
+                          const ref = await sendInventoryEmail({
+                            type: 'review_link',
+                            tenantEmail,
+                            tenantName,
+                            address: inventory.address,
+                            pdfStoragePath: sentPdfUrl ? `pdfs/${signToken}/original.pdf` : '',
+                            firestoreToken: signToken,
+                            reviewLink: link,
+                          });
+                          setReviewSentLink(link);
+                          setReviewDispatchRef(ref);
+                          setShowReviewModal(false);
+                        } catch (err) {
+                          const msg = err instanceof Error ? err.message : String(err);
+                          alert(`Failed to send review link: ${msg}`);
+                        } finally {
+                          setReviewSending(false);
+                        }
+                      }}
+                      className="flex-1 py-3 rounded-lg text-sm font-bold text-white bg-bergason-navy hover:bg-slate-700 transition-colors"
+                    >
+                      Send Review Link
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1389,6 +1483,7 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/inventory/:id" element={<InventoryEditor />} />
+        <Route path="/sign/:token" element={<TenantSign />} />
         <Route path="/review/:token" element={<TenantReview />} />
       </Routes>
     </HashRouter>

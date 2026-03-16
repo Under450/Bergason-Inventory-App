@@ -1,8 +1,9 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
 import { getStorage } from 'firebase-admin/storage';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import * as nodemailer from 'nodemailer';
 
 initializeApp();
@@ -14,209 +15,419 @@ const OFFICE_EMAIL = 'cjeavons@bergason.co.uk';
 const IONOS_USER = 'cjeavons@bergason.co.uk';
 const IONOS_HOST = 'smtp.ionos.co.uk';
 const IONOS_PORT = 587;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-interface SendEmailRequest {
-  type: 'original' | 'review';
-  tenantEmail: string;
-  tenantName: string;
-  address: string;
-  pdfStoragePath: string;
-  reviewLink?: string;
-  firestoreToken: string; // to store the dispatch reference back
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** Generates a reference e.g. BGS-20260316-0042 */
 const generateReference = (): string => {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const rand = String(Math.floor(Math.random() * 9000) + 1000);
   return `BGS-${date}-${rand}`;
 };
 
-/** Formats a Date as "16 March 2026 at 14:32 UTC" */
-const formatTimestamp = (d: Date): string => {
-  return d.toLocaleString('en-GB', {
+const formatTimestamp = (d: Date): string =>
+  d.toLocaleString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
     timeZone: 'Europe/London', timeZoneName: 'short',
   });
+
+const headerHtml = `
+  <div style="background:#0f172a;padding:20px;text-align:center;">
+    <div style="color:#d4af37;font-size:20px;font-weight:bold;letter-spacing:2px;">BERGASON</div>
+    <div style="color:#fff;font-size:9px;letter-spacing:4px;">PROPERTY SERVICES</div>
+  </div>`;
+
+const footerHtml = `
+  <div style="background:#f8fafc;padding:12px;text-align:center;border-top:1px solid #e2e8f0;">
+    <p style="color:#94a3b8;font-size:11px;margin:0;">Bergason Property Services · inventory@bergason.co.uk</p>
+  </div>`;
+
+const createTransporter = (password: string) =>
+  nodemailer.createTransport({
+    host: IONOS_HOST, port: IONOS_PORT, secure: false,
+    auth: { user: IONOS_USER, pass: password },
+  });
+
+const downloadPDF = async (path: string): Promise<Buffer | null> => {
+  if (!path) return null;
+  try {
+    const [buf] = await getStorage().bucket().file(path).download();
+    return buf;
+  } catch {
+    return null;
+  }
 };
+
+const sendConfirmationToOffice = async (
+  transporter: nodemailer.Transporter,
+  opts: {
+    reference: string; action: string; tenantName: string;
+    tenantEmail: string; address: string; sentAt: Date;
+    extras?: string; pdfBuffer?: Buffer | null; pdfFilename?: string;
+  }
+) => {
+  const { reference, action, tenantName, tenantEmail, address, sentAt, extras = '', pdfBuffer, pdfFilename } = opts;
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      ${headerHtml}
+      <div style="padding:24px;background:#f0fdf4;border:2px solid #86efac;">
+        <h2 style="color:#166534;margin:0 0 16px;">✅ Dispatch Confirmation — ${action}</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          ${[
+            ['Reference', `<strong style="font-size:16px;">${reference}</strong>`],
+            ['Action', action],
+            ['Property', address],
+            ['Tenant', tenantName],
+            ['Sent To', tenantEmail],
+            ['Date &amp; Time', formatTimestamp(sentAt)],
+          ].map(([k, v]) => `<tr style="border-bottom:1px solid #bbf7d0;">
+            <td style="padding:8px;color:#64748b;font-weight:bold;width:35%;">${k}</td>
+            <td style="padding:8px;color:#0f172a;">${v}</td>
+          </tr>`).join('')}
+          ${extras}
+        </table>
+      </div>
+      <div style="padding:12px 16px;background:#fef9c3;border:1px solid #fde047;font-size:12px;color:#854d0e;">
+        <strong>Legal note:</strong> This email confirms that the above action was successfully completed at the date and time shown. Retain this record as evidence for deposit scheme adjudication.
+      </div>
+      ${footerHtml}
+    </div>`;
+
+  const attachments = pdfBuffer && pdfFilename
+    ? [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }]
+    : [];
+
+  await transporter.sendMail({
+    from: FROM_ADDRESS, to: OFFICE_EMAIL,
+    subject: `[DISPATCH ${reference}] ${action} — ${tenantName} — ${address}`,
+    html, attachments,
+  });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Callable: sendInventoryEmail
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SendEmailRequest {
+  type: 'signature_request' | 'signature_confirmation' | 'review_link' | 'review_complete';
+  tenantEmail: string;
+  tenantName: string;
+  address: string;
+  pdfStoragePath: string;
+  firestoreToken: string;
+  signLink?: string;
+  reviewLink?: string;
+}
 
 export const sendInventoryEmail = onCall(
   { secrets: [ionosPassword], region: 'europe-west2' },
   async (request) => {
-    const data = request.data as SendEmailRequest;
-
-    if (!data.tenantEmail || !data.tenantName || !data.address || !data.pdfStoragePath || !data.firestoreToken) {
+    const d = request.data as SendEmailRequest;
+    if (!d.tenantEmail || !d.tenantName || !d.address || !d.firestoreToken) {
       throw new HttpsError('invalid-argument', 'Missing required fields.');
     }
 
-    const isOriginal = data.type === 'original';
     const reference = generateReference();
     const sentAt = new Date();
-    const sentAtStr = formatTimestamp(sentAt);
-    const pdfFilename = isOriginal ? 'Bergason-Inventory.pdf' : 'Bergason-TenantReview.pdf';
-    const docType = isOriginal ? 'Original Signed Inventory' : 'Tenant Review Report';
-
-    // ── 1. Download PDF from Firebase Storage ─────────────────────────────
-    const bucket = getStorage().bucket();
-    const [pdfBuffer] = await bucket.file(data.pdfStoragePath).download().catch(() => {
-      throw new HttpsError('not-found', `PDF not found: ${data.pdfStoragePath}`);
-    });
-
-    // ── 2. Build transporter ───────────────────────────────────────────────
-    const transporter = nodemailer.createTransport({
-      host: IONOS_HOST,
-      port: IONOS_PORT,
-      secure: false,
-      auth: { user: IONOS_USER, pass: ionosPassword.value() },
-    });
-
-    // ── 3. Email to tenant ─────────────────────────────────────────────────
-    const tenantSubject = isOriginal
-      ? `Your Inventory Report — ${data.address} [Ref: ${reference}]`
-      : `Your Completed Inventory Review — ${data.address} [Ref: ${reference}]`;
-
-    const tenantHtml = isOriginal ? `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#0f172a;padding:24px;text-align:center;">
-          <div style="color:#d4af37;font-size:22px;font-weight:bold;letter-spacing:2px;">BERGASON</div>
-          <div style="color:#fff;font-size:10px;letter-spacing:4px;">PROPERTY SERVICES</div>
-        </div>
-        <div style="padding:32px;background:#fff;border:1px solid #e2e8f0;">
-          <p style="color:#1e293b;font-size:15px;">Dear ${data.tenantName},</p>
-          <p style="color:#475569;">Please find attached your inventory report for <strong>${data.address}</strong>.</p>
-          <p style="color:#475569;">You have <strong>5 days</strong> to review the full inventory online and agree or raise any disputes. Please click below to begin:</p>
-          <div style="text-align:center;margin:32px 0;">
-            <a href="${data.reviewLink}" style="background:#0f172a;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
-              Review Your Inventory →
-            </a>
-          </div>
-          <p style="color:#94a3b8;font-size:12px;">If the button doesn't work, paste this link into your browser:<br/>${data.reviewLink}</p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;"/>
-          <p style="color:#94a3b8;font-size:12px;">Reference: <strong>${reference}</strong> · Sent: ${sentAtStr}</p>
-          <p style="color:#94a3b8;font-size:12px;">The original signed inventory is attached to this email as a PDF. Please keep a copy for your records.</p>
-        </div>
-        <div style="background:#f8fafc;padding:16px;text-align:center;border:1px solid #e2e8f0;border-top:none;">
-          <p style="color:#94a3b8;font-size:11px;margin:0;">Bergason Property Services · inventory@bergason.co.uk</p>
-        </div>
-      </div>
-    ` : `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#0f172a;padding:24px;text-align:center;">
-          <div style="color:#d4af37;font-size:22px;font-weight:bold;letter-spacing:2px;">BERGASON</div>
-          <div style="color:#fff;font-size:10px;letter-spacing:4px;">PROPERTY SERVICES</div>
-        </div>
-        <div style="padding:32px;background:#fff;border:1px solid #e2e8f0;">
-          <p style="color:#1e293b;font-size:15px;">Dear ${data.tenantName},</p>
-          <p style="color:#475569;">Thank you for completing your inventory review for <strong>${data.address}</strong>.</p>
-          <p style="color:#475569;">Your signed review report is attached. Please keep it for your records — it forms part of your tenancy agreement.</p>
-          <p style="color:#475569;">If you raised any disputes, these have been recorded and Bergason Property Services will be in touch if further action is required.</p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;"/>
-          <p style="color:#94a3b8;font-size:12px;">Reference: <strong>${reference}</strong> · Sent: ${sentAtStr}</p>
-        </div>
-        <div style="background:#f8fafc;padding:16px;text-align:center;border:1px solid #e2e8f0;border-top:none;">
-          <p style="color:#94a3b8;font-size:11px;margin:0;">Bergason Property Services · inventory@bergason.co.uk</p>
-        </div>
-      </div>
-    `;
-
-    await transporter.sendMail({
-      from: FROM_ADDRESS,
-      to: data.tenantEmail,
-      subject: tenantSubject,
-      html: tenantHtml,
-      attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }],
-    });
-
-    // ── 4. Dispatch confirmation email to office ───────────────────────────
-    const confirmationHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#0f172a;padding:20px;text-align:center;">
-          <div style="color:#d4af37;font-size:18px;font-weight:bold;letter-spacing:2px;">BERGASON</div>
-          <div style="color:#fff;font-size:9px;letter-spacing:4px;">DISPATCH CONFIRMATION</div>
-        </div>
-        <div style="padding:24px;background:#f0fdf4;border:2px solid #86efac;">
-          <h2 style="color:#166534;margin:0 0 16px;">✅ Email Dispatched Successfully</h2>
-          <table style="width:100%;border-collapse:collapse;font-size:14px;">
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;width:40%;">Dispatch Reference</td>
-              <td style="padding:8px;color:#0f172a;font-weight:bold;font-size:16px;">${reference}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;">Document Type</td>
-              <td style="padding:8px;color:#0f172a;">${docType}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;">Property</td>
-              <td style="padding:8px;color:#0f172a;">${data.address}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;">Tenant Name</td>
-              <td style="padding:8px;color:#0f172a;">${data.tenantName}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;">Sent To</td>
-              <td style="padding:8px;color:#0f172a;">${data.tenantEmail}</td>
-            </tr>
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;">Date &amp; Time</td>
-              <td style="padding:8px;color:#0f172a;">${sentAtStr}</td>
-            </tr>
-            ${isOriginal ? `
-            <tr style="border-bottom:1px solid #bbf7d0;">
-              <td style="padding:8px;color:#64748b;font-weight:bold;">Review Link</td>
-              <td style="padding:8px;"><a href="${data.reviewLink}" style="color:#0f172a;">${data.reviewLink}</a></td>
-            </tr>` : ''}
-            <tr>
-              <td style="padding:8px;color:#64748b;font-weight:bold;">PDF Attached</td>
-              <td style="padding:8px;color:#0f172a;">${pdfFilename}</td>
-            </tr>
-          </table>
-        </div>
-        <div style="padding:16px;background:#fef9c3;border:1px solid #fde047;font-size:12px;color:#854d0e;">
-          <strong>Legal note:</strong> This email confirms that the above document was successfully dispatched to the tenant's email address at the date and time shown. This record should be retained as evidence of dispatch for deposit scheme adjudication purposes.
-        </div>
-        <div style="background:#f8fafc;padding:12px;text-align:center;border:1px solid #e2e8f0;border-top:none;">
-          <p style="color:#94a3b8;font-size:11px;margin:0;">Bergason Property Services · Auto-generated dispatch record</p>
-        </div>
-      </div>
-    `;
-
-    await transporter.sendMail({
-      from: FROM_ADDRESS,
-      to: OFFICE_EMAIL,
-      subject: `[DISPATCH RECORD] ${reference} — ${docType} sent to ${data.tenantName} — ${data.address}`,
-      html: confirmationHtml,
-      attachments: [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }],
-    });
-
-    // ── 5. Store dispatch record in Firestore ──────────────────────────────
+    const transporter = createTransporter(ionosPassword.value());
+    const pdfBuffer = await downloadPDF(d.pdfStoragePath);
     const db = getFirestore();
+
+    // ── Tenant email content by type ─────────────────────────────────────────
+    let subject = '';
+    let html = '';
+    let pdfFilename = 'Bergason-Document.pdf';
+    let confirmationAction = '';
+    let confirmationExtras = '';
+    let firestoreUpdate: Record<string, unknown> = {};
+
+    if (d.type === 'signature_request') {
+      pdfFilename = 'Bergason-Inventory.pdf';
+      confirmationAction = 'Inventory sent for signature';
+      subject = `Please Sign Your Inventory — ${d.address} [Ref: ${reference}]`;
+      html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          ${headerHtml}
+          <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
+            <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
+            <p style="color:#475569;">The inventory report for <strong>${d.address}</strong> is attached. Please review it and sign using the link below.</p>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${d.signLink}" style="background:#0f172a;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+                Sign Inventory →
+              </a>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;">Or paste into your browser: ${d.signLink}</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+            <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
+          </div>
+          ${footerHtml}
+        </div>`;
+      confirmationExtras = `<tr style="border-bottom:1px solid #bbf7d0;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">Sign Link</td>
+        <td style="padding:8px;"><a href="${d.signLink}">${d.signLink}</a></td>
+      </tr>`;
+      firestoreUpdate = { signatureDispatchRef: reference };
+
+    } else if (d.type === 'signature_confirmation') {
+      pdfFilename = 'Bergason-SignedConfirmation.pdf';
+      confirmationAction = 'Tenant signed inventory';
+      subject = `Inventory Signed — ${d.address} [Ref: ${reference}]`;
+      html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          ${headerHtml}
+          <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
+            <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
+            <p style="color:#475569;">Thank you for signing the inventory for <strong>${d.address}</strong>. Your signed confirmation is attached.</p>
+            <p style="color:#475569;">You will receive a separate email when your 5-day review period begins after your move-in date.</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+            <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
+          </div>
+          ${footerHtml}
+        </div>`;
+      confirmationAction = 'Tenant signed the inventory';
+      firestoreUpdate = { signatureDispatchRef: reference };
+
+    } else if (d.type === 'review_link') {
+      pdfFilename = 'Bergason-Inventory.pdf';
+      confirmationAction = 'Review link sent (5-day window started)';
+      subject = `Review Your Inventory — ${d.address} [Ref: ${reference}]`;
+      html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          ${headerHtml}
+          <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
+            <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
+            <p style="color:#475569;">Now that you have moved into <strong>${d.address}</strong>, please review your inventory report online.</p>
+            <p style="color:#475569;">You have <strong>5 days</strong> to go through each room and agree or dispute the inspector's findings. You can save your progress and return at any time.</p>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${d.reviewLink}" style="background:#0f172a;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+                Begin Review →
+              </a>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;">Or paste into your browser: ${d.reviewLink}</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+            <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
+          </div>
+          ${footerHtml}
+        </div>`;
+      confirmationExtras = `<tr style="border-bottom:1px solid #bbf7d0;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">Review Link</td>
+        <td style="padding:8px;"><a href="${d.reviewLink}">${d.reviewLink}</a></td>
+      </tr>`;
+      firestoreUpdate = { reviewDispatchRef: reference };
+
+    } else if (d.type === 'review_complete') {
+      pdfFilename = 'Bergason-TenantReview.pdf';
+      confirmationAction = 'Tenant completed review';
+      subject = `Your Completed Inventory Review — ${d.address} [Ref: ${reference}]`;
+      html = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          ${headerHtml}
+          <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
+            <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
+            <p style="color:#475569;">Thank you for completing your inventory review for <strong>${d.address}</strong>. Your signed review report is attached.</p>
+            <p style="color:#475569;">If you raised any disputes, these have been recorded and Bergason Property Services will be in touch if further action is required.</p>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+            <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
+          </div>
+          ${footerHtml}
+        </div>`;
+      firestoreUpdate = { reviewPdfDispatchRef: reference };
+    }
+
+    // Send tenant email
+    const attachments = pdfBuffer
+      ? [{ filename: pdfFilename, content: pdfBuffer, contentType: 'application/pdf' }]
+      : [];
+    await transporter.sendMail({ from: FROM_ADDRESS, to: d.tenantEmail, subject, html, attachments });
+
+    // Send office confirmation
+    await sendConfirmationToOffice(transporter, {
+      reference, action: confirmationAction,
+      tenantName: d.tenantName, tenantEmail: d.tenantEmail,
+      address: d.address, sentAt,
+      extras: confirmationExtras,
+      pdfBuffer, pdfFilename,
+    });
+
+    // Store dispatch record
     const dispatchRecord = {
-      reference,
-      type: data.type,
-      docType,
-      tenantName: data.tenantName,
-      tenantEmail: data.tenantEmail,
-      address: data.address,
-      sentAt: FieldValue.serverTimestamp(),
-      sentAtISO: sentAt.toISOString(),
-      pdfStoragePath: data.pdfStoragePath,
-      reviewLink: data.reviewLink || null,
-      firestoreToken: data.firestoreToken,
+      reference, type: d.type, action: confirmationAction,
+      tenantName: d.tenantName, tenantEmail: d.tenantEmail,
+      address: d.address, firestoreToken: d.firestoreToken,
+      sentAt: FieldValue.serverTimestamp(), sentAtISO: sentAt.toISOString(),
+      pdfStoragePath: d.pdfStoragePath,
+      reviewLink: d.reviewLink || null, signLink: d.signLink || null,
     };
-
-    // Save under the inventory document and also as a top-level dispatch record
-    await db.collection('inventories').doc(data.firestoreToken)
-      .collection('dispatches').add(dispatchRecord);
     await db.collection('dispatches').doc(reference).set(dispatchRecord);
-
-    // Update the main inventory record with the reference
-    const updateField = isOriginal ? 'dispatchReference' : 'reviewDispatchReference';
-    await db.collection('inventories').doc(data.firestoreToken)
-      .update({ [updateField]: reference });
+    await db.collection('inventories').doc(d.firestoreToken)
+      .collection('dispatches').add(dispatchRecord);
+    await db.collection('inventories').doc(d.firestoreToken)
+      .update({ ...firestoreUpdate });
 
     return { success: true, reference };
   }
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scheduled: daily reminder + expiry check (runs every day at 09:00 London)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const dailyReminderCheck = onSchedule(
+  { schedule: '0 9 * * *', timeZone: 'Europe/London', secrets: [ionosPassword], region: 'europe-west2' },
+  async () => {
+    const db = getFirestore();
+    const transporter = createTransporter(ionosPassword.value());
+    const now = Date.now();
+
+    const snapshot = await db.collection('inventories')
+      .where('status', 'in', ['review_sent', 'reviewing'])
+      .get();
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data();
+      const token = docSnap.id;
+      const reviewSentAt: number = data.reviewSentAt || 0;
+      const expiresAt: number = data.expiresAt || 0;
+      if (!reviewSentAt) continue;
+
+      const elapsed = now - reviewSentAt;
+
+      // Day 3 reminder
+      if (elapsed >= 3 * DAY_MS && !data.reminder3Sent) {
+        await sendReminderEmail(transporter, data, token, 3, db);
+      }
+
+      // Day 5 final warning
+      if (elapsed >= 5 * DAY_MS && !data.reminder5Sent) {
+        await sendReminderEmail(transporter, data, token, 5, db);
+      }
+
+      // Day 6 expiry
+      if (now >= expiresAt && !data.expiryEmailSent) {
+        await sendExpiryProofEmail(transporter, data, token, db);
+      }
+    }
+  }
+);
+
+async function sendReminderEmail(
+  transporter: nodemailer.Transporter,
+  data: FirebaseFirestore.DocumentData,
+  token: string,
+  day: number,
+  db: FirebaseFirestore.Firestore
+) {
+  const reviewLink = `https://under450.github.io/Bergason-Inventory-App/#/review/${token}`;
+  const isFinal = day === 5;
+  const reference = generateReference();
+  const sentAt = new Date();
+
+  const subject = isFinal
+    ? `⚠️ FINAL REMINDER — Review your inventory today — ${data.address}`
+    : `Reminder — Please review your inventory — ${data.address}`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      ${headerHtml}
+      <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
+        <p style="font-size:15px;color:#1e293b;">Dear ${data.tenantName},</p>
+        <p style="color:#475569;">This is ${isFinal ? 'your <strong>final reminder</strong>' : 'a reminder'} to complete your inventory review for <strong>${data.address}</strong>.</p>
+        ${isFinal ? '<p style="color:#dc2626;font-weight:bold;">⚠️ Your review window closes today. After today the link will expire and you will lose your opportunity to dispute any items.</p>' : ''}
+        <div style="text-align:center;margin:28px 0;">
+          <a href="${reviewLink}" style="background:#0f172a;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+            Complete Review →
+          </a>
+        </div>
+        <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · Day ${day} reminder · ${formatTimestamp(sentAt)}</p>
+      </div>
+      ${footerHtml}
+    </div>`;
+
+  await transporter.sendMail({ from: FROM_ADDRESS, to: data.tenantEmail, subject, html });
+
+  await sendConfirmationToOffice(transporter, {
+    reference, action: `Day ${day} reminder sent to tenant`,
+    tenantName: data.tenantName, tenantEmail: data.tenantEmail,
+    address: data.address, sentAt,
+  });
+
+  const updateField = day === 3
+    ? { reminder3Sent: true, reminder3SentAt: Date.now(), reminder3Ref: reference }
+    : { reminder5Sent: true, reminder5SentAt: Date.now(), reminder5Ref: reference };
+
+  await db.collection('inventories').doc(token).update(updateField);
+}
+
+async function sendExpiryProofEmail(
+  transporter: nodemailer.Transporter,
+  data: FirebaseFirestore.DocumentData,
+  token: string,
+  db: FirebaseFirestore.Firestore
+) {
+  const sentAt = new Date();
+  const reference = generateReference();
+
+  // Build audit trail of all emails sent
+  const dispatches = await db.collection('inventories').doc(token)
+    .collection('dispatches').orderBy('sentAt', 'asc').get();
+
+  const auditRows = dispatches.docs.map(d => {
+    const dd = d.data();
+    const ts = dd.sentAt instanceof Timestamp ? dd.sentAt.toDate() : new Date(dd.sentAtISO || 0);
+    return `<tr style="border-bottom:1px solid #fecaca;">
+      <td style="padding:8px;color:#64748b;">${dd.reference || '—'}</td>
+      <td style="padding:8px;color:#0f172a;">${dd.action || dd.type}</td>
+      <td style="padding:8px;color:#0f172a;">${formatTimestamp(ts)}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+      ${headerHtml}
+      <div style="padding:24px;background:#fef2f2;border:2px solid #fca5a5;">
+        <h2 style="color:#991b1b;margin:0 0 8px;">⏰ Review Period Expired — Tenant Did Not Complete</h2>
+        <p style="color:#7f1d1d;margin:0 0 16px;">The 5-day review window for the following inventory has expired without completion by the tenant.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+          ${[
+            ['Property', data.address],
+            ['Tenant', data.tenantName],
+            ['Email Sent To', data.tenantEmail],
+            ['Review Opened', data.reviewSentAt ? formatTimestamp(new Date(data.reviewSentAt)) : '—'],
+            ['Expiry', data.expiresAt ? formatTimestamp(new Date(data.expiresAt)) : '—'],
+          ].map(([k, v]) => `<tr style="border-bottom:1px solid #fecaca;">
+            <td style="padding:8px;color:#64748b;font-weight:bold;width:35%;">${k}</td>
+            <td style="padding:8px;color:#0f172a;">${v}</td>
+          </tr>`).join('')}
+        </table>
+        <h3 style="color:#991b1b;font-size:14px;margin:16px 0 8px;">Full Dispatch Audit Trail</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr style="background:#fee2e2;">
+            <th style="padding:8px;text-align:left;color:#7f1d1d;">Reference</th>
+            <th style="padding:8px;text-align:left;color:#7f1d1d;">Action</th>
+            <th style="padding:8px;text-align:left;color:#7f1d1d;">Date &amp; Time</th>
+          </tr>
+          ${auditRows}
+        </table>
+      </div>
+      <div style="padding:12px 16px;background:#fef9c3;border:1px solid #fde047;font-size:12px;color:#854d0e;">
+        <strong>Legal note:</strong> This email serves as evidence that the tenant (${data.tenantEmail}) was sent the inventory review link and ${data.reminder3Sent ? 'two reminders' : data.reminder5Sent ? 'a reminder' : 'no reminders were recorded but the window has expired'}. The tenant did not complete the review within the 5-day window. This record and the audit trail above may be used as evidence in deposit scheme adjudication proceedings.
+      </div>
+      ${footerHtml}
+    </div>`;
+
+  await transporter.sendMail({
+    from: FROM_ADDRESS, to: OFFICE_EMAIL,
+    subject: `[EXPIRY PROOF ${reference}] Tenant did not complete review — ${data.tenantName} — ${data.address}`,
+    html,
+  });
+
+  await db.collection('inventories').doc(token).update({
+    status: 'expired',
+    expiryEmailSent: true,
+    expiryEmailSentAt: Date.now(),
+    expiryRef: reference,
+  });
+}

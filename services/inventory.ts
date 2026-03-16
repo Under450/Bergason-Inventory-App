@@ -17,39 +17,71 @@ export interface FirestoreInventory {
   token: string;
   tenantEmail: string;
   tenantName: string;
-  status: 'sent' | 'reviewing' | 'completed' | 'expired';
+  status: 'pending_signature' | 'signed' | 'review_sent' | 'reviewing' | 'completed' | 'expired';
   createdAt: number;
-  expiresAt: number;
+
+  // Stage 1 — Pre-move-in signature
+  signatureSentAt?: number;
+  signatureStatus?: 'pending' | 'signed';
+  tenantSignatureData?: string;
+  signaturePdfUrl?: string;
+  signatureDispatchRef?: string;
+  originalPdfUrl?: string;       // PDF 1 sent to tenant with signature request
+
+  // Stage 2 — Post-move-in review (5-day window)
+  reviewSentAt?: number;         // when Craig clicks "Send Review Link"
+  expiresAt?: number;            // reviewSentAt + 5 days
+  reviewDispatchRef?: string;
+  reminder3Sent?: boolean;
+  reminder3SentAt?: number;
+  reminder5Sent?: boolean;
+  reminder5SentAt?: number;
+  expiryEmailSent?: boolean;
+  expiryEmailSentAt?: number;
+
+  // Stage 3 — Tenant review responses
   tenantReview: TenantReviewData;
   completedRooms: string[];
   tenantSignature?: string;
   tenantReviewCompletedAt?: number;
-  originalPdfUrl?: string;   // PDF 1 – original signed inventory
-  reviewPdfUrl?: string;     // PDF 2 – tenant review report
+  reviewPdfUrl?: string;         // PDF 2 — combined tenant review report
+  reviewPdfDispatchRef?: string;
 }
 
+/** Called when inspector clicks "Send for Signature" — Stage 1 */
 export const saveInventoryToFirestore = async (
   inventory: Inventory,
   tenantEmail: string,
   tenantName: string
 ): Promise<string> => {
   const token = crypto.randomUUID().replace(/-/g, '');
-  const expiresAt = Date.now() + 5 * 24 * 60 * 60 * 1000; // 5 days
 
   const data: FirestoreInventory = {
     inventory,
     token,
     tenantEmail,
     tenantName,
-    status: 'sent',
+    status: 'pending_signature',
     createdAt: Date.now(),
-    expiresAt,
+    signatureSentAt: Date.now(),
+    signatureStatus: 'pending',
     tenantReview: {},
     completedRooms: [],
   };
 
   await setDoc(doc(db, 'inventories', token), data);
   return token;
+};
+
+/** Called when Craig clicks "Send Review Link" — Stage 2 */
+export const activateReviewLink = async (token: string): Promise<void> => {
+  const reviewSentAt = Date.now();
+  const expiresAt = reviewSentAt + 5 * 24 * 60 * 60 * 1000;
+  await updateDoc(doc(db, 'inventories', token), {
+    status: 'review_sent',
+    reviewSentAt,
+    expiresAt,
+  });
 };
 
 export const getInventoryByToken = async (token: string): Promise<FirestoreInventory | null> => {

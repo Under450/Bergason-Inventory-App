@@ -163,7 +163,7 @@ const TenantReview: React.FC = () => {
 
           setSaveStatus('Sending email...');
           await sendInventoryEmail({
-            type: 'review',
+            type: 'review_complete',
             tenantEmail: data.tenantEmail,
             tenantName: data.tenantName,
             address: data.inventory.address,
