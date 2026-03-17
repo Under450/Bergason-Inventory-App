@@ -1,7 +1,6 @@
 export enum Condition {
   EXCELLENT = 'Excellent',
   GOOD = 'Good',
-  STANDARD = 'Standard',
   FAIR = 'Fair',
   CWA = 'Consistent With Age',
   POOR = 'Poor',
@@ -48,7 +47,7 @@ export interface InventoryItem {
   accountNumber?: string;   // meter account number for utility claims
 
   // Deposit evidence fields
-  qualityTier?: 'Budget' | 'Mid-range' | 'Premium';  // for depreciation calculation
+  qualityTier?: 'Budget' | 'Standard' | 'Mid-range' | 'Premium';  // for depreciation calculation
   installedDate?: string;   // e.g. "March 2021" — for fair wear and tear
   purchasePrice?: string;   // e.g. "£450" — for depreciation at check-out
 }

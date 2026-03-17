@@ -86,6 +86,20 @@ const getInventoryById = (id: string): Inventory | undefined => {
   return getInventories().find(i => i.id === id);
 };
 
+const deleteInventoryById = (id: string) => {
+  const all = getInventories().filter(i => i.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  // Also remove token state for this inventory
+  try {
+    const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (raw) {
+      const tokens = JSON.parse(raw);
+      delete tokens[id];
+      localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(tokens));
+    }
+  } catch { /* ignore */ }
+};
+
 // --- Components ---
 
 const BergasonLogo = ({ className = "" }: { className?: string }) => (
@@ -119,7 +133,7 @@ const Dashboard = () => {
           items: itemsToUse.map(itemName => ({
             id: generateId(),
             name: itemName,
-            condition: Condition.STANDARD,
+            condition: Condition.GOOD,
             cleanliness: Cleanliness.GOOD,
             description: '',
             photos: [],
@@ -202,43 +216,54 @@ const Dashboard = () => {
               {inventories.map(inv => (
                 <div
                   key={inv.id}
-                  onClick={() => navigate(`/inventory/${inv.id}`)}
-                  className="p-4 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer flex items-center gap-4 group"
+                  className="p-4 hover:bg-slate-50 transition-colors flex items-center gap-4 group"
                 >
                   <div
-                    className={`w-16 h-16 shrink-0 rounded-lg flex items-center justify-center text-lg shadow-sm border overflow-hidden ${
-                      inv.status === 'LOCKED' ? 'border-green-200' : 'border-slate-100'
-                    }`}
+                    className="flex flex-1 items-center gap-4 cursor-pointer min-w-0"
+                    onClick={() => navigate(`/inventory/${inv.id}`)}
                   >
-                    {inv.frontImage ? (
-                      <img src={inv.frontImage} className="w-full h-full object-cover" alt="Property" />
-                    ) : (
-                      <i
-                        className={`fas ${
-                          inv.status === 'LOCKED'
-                            ? 'fa-lock text-green-500'
-                            : 'fa-home text-slate-300'
-                        }`}
-                      ></i>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-slate-800 text-base truncate group-hover:text-bergason-navy transition-colors">
-                      {inv.address || "Untitled Property"}
-                    </h3>
-                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
-                      <span>{formatDate(inv.dateCreated)}</span>
-                      <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                      <span>{inv.rooms.length} Rooms</span>
-                      {inv.propertyType && (
-                        <>
-                          <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                          <span>{inv.propertyType}</span>
-                        </>
+                    <div
+                      className={`w-16 h-16 shrink-0 rounded-lg flex items-center justify-center text-lg shadow-sm border overflow-hidden ${
+                        inv.status === 'LOCKED' ? 'border-green-200' : 'border-slate-100'
+                      }`}
+                    >
+                      {inv.frontImage ? (
+                        <img src={inv.frontImage} className="w-full h-full object-cover" alt="Property" />
+                      ) : (
+                        <i className={`fas ${inv.status === 'LOCKED' ? 'fa-lock text-green-500' : 'fa-home text-slate-300'}`}></i>
                       )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-slate-800 text-base truncate group-hover:text-bergason-navy transition-colors">
+                        {inv.address || "Untitled Property"}
+                      </h3>
+                      <div className="flex items-center gap-3 text-xs text-slate-400 mt-1">
+                        <span>{formatDate(inv.dateCreated)}</span>
+                        <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                        <span>{inv.rooms.length} Rooms</span>
+                        {inv.propertyType && (
+                          <>
+                            <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                            <span>{inv.propertyType}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <i className="fas fa-chevron-right text-slate-200 group-hover:text-bergason-gold shrink-0"></i>
                   </div>
-                  <i className="fas fa-chevron-right text-slate-200 group-hover:text-bergason-gold"></i>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Delete "${inv.address || 'Untitled Property'}"? This cannot be undone.`)) {
+                        deleteInventoryById(inv.id);
+                        setInventories(getInventories());
+                      }
+                    }}
+                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors ml-1"
+                    title="Delete inventory"
+                  >
+                    <i className="fas fa-trash text-xs"></i>
+                  </button>
                 </div>
               ))}
             </div>
@@ -515,22 +540,23 @@ const InventoryEditor = () => {
     }
   };
 
-  const handleDocUpload = (docId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDocUpload = async (docId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     if (!inventory) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const docs = inventory.documents.map(d => {
-        if (d.id === docId) {
-          return { ...d, fileData: evt.target?.result as string, uploadDate: Date.now() };
-        }
-        return d;
-      });
+    try {
+      const path = `docs/${inventory.id}/${docId}_${file.name}`;
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      const url = await uploadPDFToStorage(blob, path);
+      const docs = inventory.documents.map(d =>
+        d.id === docId ? { ...d, fileData: url, uploadDate: Date.now() } : d
+      );
       updateInventory({ documents: docs });
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      alert('Document upload failed. Please try again.');
+      console.error('Doc upload error:', err);
+    }
   };
 
 
@@ -1024,6 +1050,7 @@ const InventoryEditor = () => {
                                     >
                                       <option value="">Quality tier</option>
                                       <option value="Budget">Budget</option>
+                                      <option value="Standard">Standard</option>
                                       <option value="Mid-range">Mid-range</option>
                                       <option value="Premium">Premium</option>
                                     </select>
