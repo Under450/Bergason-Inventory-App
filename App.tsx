@@ -137,6 +137,7 @@ const Dashboard = () => {
             cleanliness: Cleanliness.GOOD,
             description: '',
             photos: [],
+            qualityTier: 'Standard',
             meterType: MeterType.STANDARD,
             workingStatus: 'Not Tested'
           }))
@@ -910,7 +911,7 @@ const InventoryEditor = () => {
                       isExpanded ? 'bg-slate-100 border-b border-slate-200' : 'bg-white hover:bg-slate-50'
                     }`}
                   >
-                    <h3 className={`font-serif font-bold text-xl flex items-center gap-2 ${isRoomActive ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
+                    <h3 className="font-serif font-bold text-xl flex items-center gap-2 text-slate-900">
                       {roomIndex + 1}. {room.name}
                       {room.items.some(i => i.photos.length > 0) && (
                         <i className="fas fa-camera text-red-500 text-sm" title="This room has photos"></i>
