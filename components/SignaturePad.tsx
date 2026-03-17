@@ -3,7 +3,7 @@ import { Button } from './Button';
 
 interface SignaturePadProps {
   onSave: (dataUrl: string) => void;
-  onClear: () => void;
+  onClear?: () => void;
 }
 
 export const SignaturePad: React.FC<SignaturePadProps> = ({ onSave, onClear }) => {

@@ -127,6 +127,7 @@ export const REQUIRED_DOCUMENTS_LIST = [
 export const CONDITION_COLORS: Record<Condition, string> = {
   [Condition.EXCELLENT]: "bg-green-600 text-white border-green-700",
   [Condition.GOOD]: "bg-green-100 text-green-800 border-green-200",
+  [Condition.STANDARD]: "bg-slate-100 text-slate-700 border-slate-300",
   [Condition.FAIR]: "bg-yellow-100 text-yellow-800 border-yellow-200",
   [Condition.CWA]: "bg-blue-100 text-blue-800 border-blue-200",
   [Condition.POOR]: "bg-orange-100 text-orange-800 border-orange-200",
@@ -146,6 +147,7 @@ export const CLEANLINESS_COLORS: Record<Cleanliness, string> = {
 export const CONDITION_CSS: Record<Condition, { bg: string; color: string }> = {
   [Condition.EXCELLENT]:      { bg: '#16a34a', color: '#fff' },
   [Condition.GOOD]:           { bg: '#dcfce7', color: '#166534' },
+  [Condition.STANDARD]:       { bg: '#f1f5f9', color: '#475569' },
   [Condition.FAIR]:           { bg: '#fef9c3', color: '#854d0e' },
   [Condition.CWA]:            { bg: '#dbeafe', color: '#1e40af' },
   [Condition.POOR]:           { bg: '#ffedd5', color: '#9a3412' },
@@ -287,6 +289,7 @@ export const ROOM_ICONS: Record<string, string> = {
 export const CONDITION_ICONS: Record<string, string> = {
   "Excellent": "text-emerald-600",
   "Good": "text-green-500",
+  "Standard": "text-slate-500",
   "Fair": "text-yellow-500",
   "Consistent With Age": "text-blue-500",
   "Poor": "text-orange-500",

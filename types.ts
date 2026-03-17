@@ -1,6 +1,7 @@
 export enum Condition {
   EXCELLENT = 'Excellent',
   GOOD = 'Good',
+  STANDARD = 'Standard',
   FAIR = 'Fair',
   CWA = 'Consistent With Age',
   POOR = 'Poor',

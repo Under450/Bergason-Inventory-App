@@ -1,4 +1,4 @@
-import { onRequest } from 'firebase-functions/v2/https';
+import * as functionsV1 from 'firebase-functions/v1';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
@@ -126,18 +126,25 @@ interface SendEmailRequest {
   reviewLink?: string;
 }
 
-export const sendInventoryEmail = onRequest(
-  { secrets: [ionosPassword], region: 'europe-west2', cors: true, invoker: 'public' },
-  async (req, res) => {
+export const sendInventoryEmail = functionsV1
+  .region('europe-west2')
+  .runWith({ secrets: ['IONOS_PASSWORD'], timeoutSeconds: 60 })
+  .https.onRequest(async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+
     const d = req.body as SendEmailRequest;
-    if (!d.tenantEmail || !d.tenantName || !d.address || !d.firestoreToken) {
-      res.status(400).json({ error: 'Missing required fields.' }); return;
+    const missing = ['tenantEmail', 'tenantName', 'address', 'firestoreToken'].filter(k => !d[k as keyof SendEmailRequest]);
+    if (missing.length) {
+      console.error('Missing required fields:', missing, 'body:', JSON.stringify(d));
+      res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` }); return;
     }
 
     const reference = generateReference(d.propertyId);
     const sentAt = new Date();
-    const transporter = createTransporter(ionosPassword.value());
+    const transporter = createTransporter(process.env.IONOS_PASSWORD!);
     const pdfBuffer = await downloadPDF(d.pdfStoragePath);
     const db = getFirestore();
 
@@ -298,7 +305,9 @@ export const dailyReminderCheck = onSchedule(
       const expiresAt: number = data.expiresAt || 0;
       if (!reviewSentAt) continue;
 
-      const elapsed = now - reviewSentAt;
+      // Use move-in date as the clock start if available, else fall back to when the link was sent
+      const baseDate: number = data.moveInDate || reviewSentAt;
+      const elapsed = now - baseDate;
 
       // Day 3 reminder
       if (elapsed >= 3 * DAY_MS && !data.reminder3Sent) {
@@ -372,7 +381,6 @@ async function sendExpiryProofEmail(
   token: string,
   db: FirebaseFirestore.Firestore
 ) {
-  const sentAt = new Date();
   const reference = generateReference();
 
   // Build audit trail of all emails sent

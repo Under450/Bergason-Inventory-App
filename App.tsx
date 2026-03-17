@@ -119,7 +119,7 @@ const Dashboard = () => {
           items: itemsToUse.map(itemName => ({
             id: generateId(),
             name: itemName,
-            condition: Condition.GOOD,
+            condition: Condition.STANDARD,
             cleanliness: Cleanliness.GOOD,
             description: '',
             photos: [],
@@ -386,6 +386,7 @@ const InventoryEditor = () => {
   const [reviewSending, setReviewSending] = useState(false);
   const [reviewSentLink, setReviewSentLink] = useState<string | null>(null);
   const [reviewDispatchRef, setReviewDispatchRef] = useState<string | null>(null);
+  const [moveInDateStr, setMoveInDateStr] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     if (id) {
@@ -1210,6 +1211,12 @@ const InventoryEditor = () => {
                 <div>
                   {doc.fileData ? (
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => window.open(doc.fileData!, '_blank')}
+                        className="text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded font-medium text-blue-600"
+                      >
+                        View
+                      </button>
                       <a
                         href={doc.fileData}
                         download={doc.name}
@@ -1314,8 +1321,44 @@ const InventoryEditor = () => {
           </div>
 
 
+          {!isReadOnly && !inventory.tenantPresent && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+              <div>
+                <h4 className="font-bold text-amber-900 text-sm uppercase tracking-wide">Documents Provided to Tenant</h4>
+                <p className="text-xs text-amber-700 mt-0.5">Tenant was not present — confirm each document was provided at handover. Upload a copy to include it in the record.</p>
+              </div>
+              <div className="space-y-2">
+                {inventory.documents.map(doc => (
+                  <div key={doc.id} className="flex items-center justify-between p-2.5 bg-white border border-amber-100 rounded-lg shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${doc.fileData ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-300'}`}>
+                        <i className={`fas ${doc.fileData ? 'fa-check' : 'fa-minus'} text-[10px]`}></i>
+                      </div>
+                      <span className="text-sm text-slate-700 font-medium">{doc.name}</span>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      {doc.fileData && (
+                        <button
+                          onClick={() => window.open(doc.fileData!, '_blank')}
+                          className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-medium"
+                        >
+                          View
+                        </button>
+                      )}
+                      <label className="cursor-pointer text-xs bg-bergason-navy text-white hover:bg-slate-700 px-2 py-1 rounded font-medium">
+                        {doc.fileData ? 'Replace' : 'Upload'}
+                        <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!isReadOnly && (
             <div className="space-y-6">
+              {inventory.tenantPresent && (<>
               {/* How many tenants */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <label className="text-xs font-bold uppercase text-slate-500 block mb-3">How many tenants are signing?</label>
@@ -1387,6 +1430,8 @@ const InventoryEditor = () => {
                   </div>
                 );
               })}
+
+              </>)}
 
               {/* Other signers (inspector, Bergason etc.) */}
               <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
@@ -1563,6 +1608,11 @@ const InventoryEditor = () => {
                   </div>
                 ) : (
                   <>
+                    {!inventory?.address?.trim() && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 font-medium mb-3">
+                        Property address is missing — please fill it in before submitting.
+                      </div>
+                    )}
                     <div className="space-y-3 mb-5">
                       <div>
                         <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tenant Full Name</label>
@@ -1592,7 +1642,7 @@ const InventoryEditor = () => {
                         Cancel
                       </button>
                       <button
-                        disabled={!tenantName.trim() || !tenantEmail.trim()}
+                        disabled={!tenantName.trim() || !tenantEmail.trim() || !inventory?.address?.trim()}
                         onClick={async () => {
                           if (!inventory || !reportRef.current) return;
                           setSending(true);
@@ -1670,12 +1720,22 @@ const InventoryEditor = () => {
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
                 <h3 className="font-bold text-xl text-slate-800 mb-1">Send Review Link</h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  Send the tenant their 5-day review link. Day 3 and Day 5 reminders will be sent automatically. If not completed, an expiry proof email is sent to you on Day 6.
+                  Send the tenant their 5-day review link. The window starts from their move-in date. Day 3 and Day 5 reminders will be sent automatically. If not completed, an expiry proof email is sent to you on Day 6.
                 </p>
-                <div className="bg-slate-50 rounded-lg p-3 mb-5 text-sm text-slate-600 space-y-1">
+                <div className="bg-slate-50 rounded-lg p-3 mb-4 text-sm text-slate-600 space-y-1">
                   <div className="flex justify-between"><span className="text-slate-400 font-medium">Tenant</span><span>{tenantName}</span></div>
                   <div className="flex justify-between"><span className="text-slate-400 font-medium">Email</span><span className="truncate ml-4">{tenantEmail}</span></div>
                   <div className="flex justify-between"><span className="text-slate-400 font-medium">Property</span><span className="truncate ml-4">{inventory.address}</span></div>
+                </div>
+                <div className="mb-5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Move-in Date</label>
+                  <input
+                    type="date"
+                    value={moveInDateStr}
+                    onChange={e => setMoveInDateStr(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">5-day review window expires on {moveInDateStr ? new Date(new Date(moveInDateStr).getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</p>
                 </div>
                 {reviewSending ? (
                   <div className="py-6 text-center">
@@ -1691,10 +1751,15 @@ const InventoryEditor = () => {
                       Cancel
                     </button>
                     <button
+                      disabled={!tenantEmail?.trim() || !tenantName?.trim() || !inventory?.address?.trim() || !moveInDateStr}
                       onClick={async () => {
                         setReviewSending(true);
                         try {
-                          await activateReviewLink(signToken);
+                          const moveInMs = moveInDateStr
+                            ? new Date(moveInDateStr).setHours(0, 0, 0, 0)
+                            : Date.now();
+                          const currentActiveRoomIds = inventory.activeRoomIds ?? inventory.rooms.map(r => r.id);
+                          await activateReviewLink(signToken, moveInMs, currentActiveRoomIds);
                           const link = `${window.location.origin}${window.location.pathname}#/review/${signToken}`;
                           const ref = await sendInventoryEmail({
                             type: 'review_link',

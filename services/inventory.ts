@@ -29,8 +29,9 @@ export interface FirestoreInventory {
   originalPdfUrl?: string;       // PDF 1 sent to tenant with signature request
 
   // Stage 2 — Post-move-in review (5-day window)
+  moveInDate?: number;           // tenant's actual move-in date (ms epoch)
   reviewSentAt?: number;         // when Craig clicks "Send Review Link"
-  expiresAt?: number;            // reviewSentAt + 5 days
+  expiresAt?: number;            // moveInDate + 5 days
   reviewDispatchRef?: string;
   reminder3Sent?: boolean;
   reminder3SentAt?: number;
@@ -43,6 +44,7 @@ export interface FirestoreInventory {
   tenantReview: TenantReviewData;
   completedRooms: string[];
   tenantSignature?: string;
+  noFurtherDefects?: boolean;
   tenantReviewCompletedAt?: number;
   reviewPdfUrl?: string;         // PDF 2 — combined tenant review report
   reviewPdfDispatchRef?: string;
@@ -74,13 +76,19 @@ export const saveInventoryToFirestore = async (
 };
 
 /** Called when Craig clicks "Send Review Link" — Stage 2 */
-export const activateReviewLink = async (token: string): Promise<void> => {
+export const activateReviewLink = async (
+  token: string,
+  moveInDate: number,
+  activeRoomIds: string[]
+): Promise<void> => {
   const reviewSentAt = Date.now();
-  const expiresAt = reviewSentAt + 5 * 24 * 60 * 60 * 1000;
+  const expiresAt = moveInDate + 5 * 24 * 60 * 60 * 1000;
   await updateDoc(doc(db, 'inventories', token), {
     status: 'review_sent',
+    moveInDate,
     reviewSentAt,
     expiresAt,
+    'inventory.activeRoomIds': activeRoomIds,
   });
 };
 
