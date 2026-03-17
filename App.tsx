@@ -895,7 +895,7 @@ const InventoryEditor = () => {
             if (isPreviewMode && !isRoomActive) return null;
 
             return (
-              <div key={room.id} className={`break-inside-avoid ${!isRoomActive ? 'opacity-40' : ''}`}>
+              <div key={room.id} className="break-inside-avoid">
                 {showHeader && (
                   <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest text-center mb-6 mt-8 print:mt-4">
                     {room.floorGroup}
@@ -935,7 +935,7 @@ const InventoryEditor = () => {
                   </div>
 
                   {isExpanded && (
-                    <div className="p-2 md:p-4 bg-white">
+                    <div className={`p-2 md:p-4 bg-white ${!isRoomActive ? 'opacity-40 pointer-events-none' : ''}`}>
                       {/* Room-level evidence fields */}
                       {!isReadOnly && (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
