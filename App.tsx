@@ -871,11 +871,8 @@ const InventoryEditor = () => {
             // In preview/print mode, skip inactive rooms entirely
             if (isPreviewMode && !isRoomActive) return null;
 
-            // In edit mode, inactive rooms are hidden from the main list (shown in excluded section below)
-            if (!isPreviewMode && !isRoomActive) return null;
-
             return (
-              <div key={room.id} className="break-inside-avoid">
+              <div key={room.id} className={`break-inside-avoid ${!isRoomActive ? 'opacity-40' : ''}`}>
                 {showHeader && (
                   <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest text-center mb-6 mt-8 print:mt-4">
                     {room.floorGroup}
@@ -1220,36 +1217,6 @@ const InventoryEditor = () => {
             );
           })}
         </div>
-
-        {/* Excluded rooms — compact re-include strip */}
-        {!isPreviewMode && (() => {
-          const excluded = inventory.rooms.filter(r => {
-            const ids = inventory.activeRoomIds;
-            return ids && !ids.includes(r.id);
-          });
-          if (excluded.length === 0) return null;
-          return (
-            <div className="mt-4 border border-dashed border-slate-200 rounded-lg p-3">
-              <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-2">
-                <i className="fas fa-eye-slash mr-1"></i> Excluded from tenant review ({excluded.length})
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {excluded.map(room => (
-                  <button
-                    key={room.id}
-                    disabled={isReadOnly}
-                    onClick={() => !isReadOnly && toggleRoomActive(room.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-green-50 hover:border-green-300 border border-slate-200 rounded-full text-xs text-slate-500 hover:text-green-700 transition-colors disabled:cursor-default"
-                    title="Click to re-include in tenant review"
-                  >
-                    <i className="fas fa-plus text-[9px]"></i>
-                    {room.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* 4. DOCUMENTS */}
         <section className="mt-16 break-inside-avoid">
