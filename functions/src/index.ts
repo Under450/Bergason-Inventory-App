@@ -57,9 +57,10 @@ const createTransporter = (password: string) =>
 const downloadPDF = async (path: string): Promise<Buffer | null> => {
   if (!path) return null;
   try {
-    const [buf] = await getStorage().bucket().file(path).download();
+    const [buf] = await getStorage().bucket('bergason-inventory.firebasestorage.app').file(path).download();
     return buf;
-  } catch {
+  } catch (e) {
+    console.error('downloadPDF failed for path:', path, e);
     return null;
   }
 };
@@ -184,22 +185,21 @@ export const sendInventoryEmail = functionsV1
       firestoreUpdate = { signatureDispatchRef: reference };
 
     } else if (d.type === 'signature_confirmation') {
-      pdfFilename = 'Bergason-SignedConfirmation.pdf';
-      confirmationAction = 'Tenant signed inventory';
-      subject = `Inventory Signed — ${d.address} [Ref: ${reference}]`;
+      pdfFilename = 'Bergason-Inventory.pdf';
+      confirmationAction = 'Inventory copy sent to tenant';
+      subject = `Your Inventory Copy — ${d.address} [Ref: ${reference}]`;
       html = `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
           ${headerHtml}
           <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
             <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
-            <p style="color:#475569;">Thank you for signing the inventory for <strong>${d.address}</strong>. Your signed confirmation is attached.</p>
-            <p style="color:#475569;">You will receive a separate email when your 5-day review period begins after your move-in date.</p>
+            <p style="color:#475569;">Please find attached a copy of your inventory for <strong>${d.address}</strong>, this is for your records.</p>
+            <p style="color:#475569;">A link with the same inventory will be sent via email giving you 5 days to amend any item you require.</p>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
             <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
           </div>
           ${footerHtml}
         </div>`;
-      confirmationAction = 'Tenant signed the inventory';
       firestoreUpdate = { signatureDispatchRef: reference };
 
     } else if (d.type === 'review_link') {
