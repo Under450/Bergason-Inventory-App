@@ -144,9 +144,7 @@ const Dashboard = () => {
       })
     );
 
-    const activeRoomIds = rooms
-      .filter(r => !excludedRooms.includes(r.name))
-      .map(r => r.id);
+    const activeRoomIds = rooms.map(r => r.id);
 
     const newInv: Inventory = {
       id: generateId(),
@@ -424,6 +422,14 @@ const InventoryEditor = () => {
 
         if (!data.signatures) data.signatures = [];
         if (data.tenantPresent === undefined) data.tenantPresent = false;
+
+        // Ensure all rooms are active by default — any room not explicitly in activeRoomIds gets added back
+        if (data.activeRoomIds) {
+          const missing = data.rooms.filter(r => !data.activeRoomIds!.includes(r.id)).map(r => r.id);
+          if (missing.length > 0) data.activeRoomIds = [...data.activeRoomIds, ...missing];
+        } else {
+          data.activeRoomIds = data.rooms.map(r => r.id);
+        }
 
         if (!data.documents || data.documents.length === 0) {
           data.documents = REQUIRED_DOCUMENTS_LIST.map(name => ({
