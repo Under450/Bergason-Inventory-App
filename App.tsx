@@ -500,10 +500,27 @@ const InventoryEditor = () => {
   const toggleRoomActive = (roomId: string) => {
     if (!inventory) return;
     const current = inventory.activeRoomIds || inventory.rooms.map(r => r.id);
-    const updated = current.includes(roomId)
+    const isCurrentlyActive = current.includes(roomId);
+    const updatedActiveIds = isCurrentlyActive
       ? current.filter(id => id !== roomId)
       : [...current, roomId];
-    updateInventory({ activeRoomIds: updated });
+    // Also grey/ungrey all items in this room
+    const rooms = inventory.rooms.map(r =>
+      r.id === roomId
+        ? { ...r, items: r.items.map(i => ({ ...i, excluded: isCurrentlyActive })) }
+        : r
+    );
+    updateInventory({ activeRoomIds: updatedActiveIds, rooms });
+  };
+
+  const toggleItemExcluded = (roomId: string, itemId: string) => {
+    if (!inventory) return;
+    const rooms = inventory.rooms.map(r =>
+      r.id === roomId
+        ? { ...r, items: r.items.map(i => i.id === itemId ? { ...i, excluded: !i.excluded } : i) }
+        : r
+    );
+    updateInventory({ rooms });
   };
 
   const addPhoto = async (roomId: string, itemId: string, file: File) => {
@@ -982,11 +999,20 @@ const InventoryEditor = () => {
                           const isMeter = isMeterRoom && item.name.includes("Meter");
 
                           return (
-                            <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 py-4 md:py-2 relative border-b md:border-none border-slate-100 pb-4 md:pb-2">
+                            <div key={item.id} className={`grid grid-cols-1 md:grid-cols-12 gap-2 py-4 md:py-2 relative border-b md:border-none border-slate-100 pb-4 md:pb-2 ${item.excluded ? 'opacity-40' : ''}`}>
 
                               <div className="col-span-2 font-bold text-slate-800 text-sm flex items-start gap-1">
                                 <span className="text-slate-400 font-mono text-xs">{roomIndex + 1}.{itemIndex + 1}</span>
                                 {item.name}
+                                {!isPreviewMode && (
+                                  <button
+                                    onClick={() => toggleItemExcluded(room.id, item.id)}
+                                    title={item.excluded ? 'Include item' : 'Exclude item'}
+                                    className={`ml-auto text-xs transition-colors ${item.excluded ? 'text-slate-300 hover:text-green-500' : 'text-slate-300 hover:text-red-400'}`}
+                                  >
+                                    <i className={`fas ${item.excluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                  </button>
+                                )}
                               </div>
 
                               <div className="col-span-4 space-y-2">

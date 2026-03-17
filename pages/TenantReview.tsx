@@ -85,9 +85,11 @@ const TenantReview: React.FC = () => {
 
   const getActiveRooms = (inv: FirestoreInventory) => {
     const activeIds = inv.inventory.activeRoomIds;
-    return activeIds && activeIds.length > 0
+    const rooms = activeIds && activeIds.length > 0
       ? inv.inventory.rooms.filter(r => activeIds.includes(r.id))
       : inv.inventory.rooms;
+    // Strip excluded items from each room
+    return rooms.map(r => ({ ...r, items: r.items.filter(i => !i.excluded) }));
   };
 
   const getTotalItems = () => {

@@ -32,6 +32,7 @@ export interface Photo {
 export interface InventoryItem {
   id: string;
   name: string;
+  excluded?: boolean;   // greyed out / hidden from tenant review
   condition: Condition;
   cleanliness: Cleanliness;
   description: string;
