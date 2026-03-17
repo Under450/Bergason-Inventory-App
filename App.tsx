@@ -894,10 +894,10 @@ const InventoryEditor = () => {
                       )}
                     </h3>
                     <div className="flex items-center gap-2">
-                      {!isReadOnly && (
+                      {!isPreviewMode && (
                         <button
                           onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
-                          title={isRoomActive ? 'Exclude room' : 'Include room'}
+                          title={isRoomActive ? 'Exclude from tenant review' : 'Include in tenant review'}
                           className={`text-sm px-2 py-1 rounded transition-colors ${
                             isRoomActive
                               ? 'text-slate-400 hover:text-red-400'
