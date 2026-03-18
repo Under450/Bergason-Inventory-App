@@ -3,6 +3,7 @@ import bergasonLogo from './bergasonlogo.png';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
+import OfficePortal from './pages/OfficePortal';
 import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, saveDraftToFirestore, loadDraftsFromFirestore, deleteDraftFromFirestore } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { generateInventoryPDF } from './services/pdfTemplate';
@@ -206,12 +207,18 @@ const Dashboard = () => {
             Inventory Management System
           </h2>
         </div>
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-3">
           <Button
             onClick={() => setShowPropertyTypeModal(true)}
             className="bg-bergason-gold text-white hover:bg-amber-600 shadow-lg shadow-amber-900/20 px-8 py-3 rounded-full font-bold transition-transform hover:scale-105"
           >
             <i className="fas fa-plus mr-2"></i> New Inventory
+          </Button>
+          <Button
+            onClick={() => navigate('/office')}
+            className="bg-white/10 text-white hover:bg-white/20 border border-white/30 px-6 py-3 rounded-full font-bold transition-transform hover:scale-105"
+          >
+            <i className="fas fa-building mr-2"></i> Office Portal
           </Button>
         </div>
       </header>
@@ -1982,6 +1989,7 @@ const App = () => {
         <Route path="/inventory/:id" element={<InventoryEditor />} />
         <Route path="/sign/:token" element={<TenantSign />} />
         <Route path="/review/:token" element={<TenantReview />} />
+        <Route path="/office" element={<OfficePortal />} />
       </Routes>
     </HashRouter>
   );
