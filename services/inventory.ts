@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, collection, getDocs, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { Inventory } from '../types';
 
@@ -102,4 +102,28 @@ export const updateTenantProgress = async (
   updates: Partial<FirestoreInventory>
 ): Promise<void> => {
   await updateDoc(doc(db, 'inventories', token), updates as Record<string, unknown>);
+};
+
+// ── Draft inventory sync (cross-device) ──────────────────────────────────────
+
+const DRAFTS_COLLECTION = 'drafts';
+
+/** Save a draft inventory to Firestore so it appears on all devices */
+export const saveDraftToFirestore = async (inventory: Inventory): Promise<void> => {
+  await setDoc(doc(db, DRAFTS_COLLECTION, inventory.id), {
+    inventory,
+    updatedAt: Date.now(),
+  });
+};
+
+/** Load all draft inventories from Firestore */
+export const loadDraftsFromFirestore = async (): Promise<Inventory[]> => {
+  const q = query(collection(db, DRAFTS_COLLECTION), orderBy('updatedAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => (d.data() as { inventory: Inventory }).inventory);
+};
+
+/** Delete a draft from Firestore */
+export const deleteDraftFromFirestore = async (id: string): Promise<void> => {
+  await deleteDoc(doc(db, DRAFTS_COLLECTION, id));
 };
