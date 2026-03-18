@@ -83,13 +83,15 @@ export const activateReviewLink = async (
 ): Promise<void> => {
   const reviewSentAt = Date.now();
   const expiresAt = moveInDate + 5 * 24 * 60 * 60 * 1000;
-  await updateDoc(doc(db, 'inventories', token), {
+  // Use set+merge so this works even if the doc doesn't exist in Firestore yet
+  // (inventories created before cross-device sync was enabled)
+  await setDoc(doc(db, 'inventories', token), {
     status: 'review_sent',
     moveInDate,
     reviewSentAt,
     expiresAt,
     'inventory.activeRoomIds': activeRoomIds,
-  });
+  }, { merge: true });
 };
 
 export const getInventoryByToken = async (token: string): Promise<FirestoreInventory | null> => {
