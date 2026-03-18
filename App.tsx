@@ -5,6 +5,7 @@ import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
 import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
+import { generateInventoryPDF } from './services/pdfTemplate';
 import { uploadPDFToStorage } from './services/storage';
 import { sendInventoryEmail } from './services/email';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
@@ -524,6 +525,20 @@ const InventoryEditor = () => {
     updateInventory({ rooms });
   };
 
+  const toggleAllRoomItems = (roomId: string) => {
+    if (!inventory) return;
+    const room = inventory.rooms.find(r => r.id === roomId);
+    if (!room) return;
+    // If any item is currently visible, exclude all; if all excluded, include all
+    const anyVisible = room.items.some(i => !i.excluded);
+    const rooms = inventory.rooms.map(r =>
+      r.id === roomId
+        ? { ...r, items: r.items.map(i => ({ ...i, excluded: anyVisible })) }
+        : r
+    );
+    updateInventory({ rooms });
+  };
+
   const addPhoto = async (roomId: string, itemId: string, file: File) => {
     if (!inventory) return;
     setUploadingItems(prev => new Set(prev).add(itemId));
@@ -919,17 +934,32 @@ const InventoryEditor = () => {
                     </h3>
                     <div className="flex items-center gap-2">
                       {!isPreviewMode && (
-                        <button
-                          onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
-                          title={isRoomActive ? 'Exclude from tenant review' : 'Include in tenant review'}
-                          className={`text-sm px-2 py-1 rounded transition-colors ${
-                            isRoomActive
-                              ? 'text-slate-400 hover:text-red-400'
-                              : 'text-slate-300 hover:text-green-500'
-                          }`}
-                        >
-                          <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-                        </button>
+                        <>
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleAllRoomItems(room.id); }}
+                            title={room.items.some(i => !i.excluded) ? 'Exclude all items in this room from PDF' : 'Include all items in this room in PDF'}
+                            className={`text-xs px-2 py-1 rounded transition-colors border ${
+                              room.items.some(i => !i.excluded)
+                                ? 'text-slate-400 hover:text-red-400 border-slate-200 hover:border-red-200'
+                                : 'text-slate-300 hover:text-green-500 border-slate-100 hover:border-green-200'
+                            }`}
+                          >
+                            <i className={`fas ${room.items.some(i => !i.excluded) ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+                            <span className="ml-1 hidden md:inline text-[10px] font-bold uppercase tracking-wide">Items</span>
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
+                            title={isRoomActive ? 'Exclude entire room from tenant review' : 'Include entire room in tenant review'}
+                            className={`text-xs px-2 py-1 rounded transition-colors border ${
+                              isRoomActive
+                                ? 'text-slate-400 hover:text-red-400 border-slate-200 hover:border-red-200'
+                                : 'text-slate-300 hover:text-green-500 border-slate-100 hover:border-green-200'
+                            }`}
+                          >
+                            <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+                            <span className="ml-1 hidden md:inline text-[10px] font-bold uppercase tracking-wide">Room</span>
+                          </button>
+                        </>
                       )}
                       <i className={`fas fa-chevron-down transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`}></i>
                     </div>
@@ -1729,7 +1759,7 @@ const InventoryEditor = () => {
                             let pdfUrl: string | null = null;
                             let pdfBase64: string | undefined;
                             try {
-                              const pdfBlob = await captureElementAsPDF(reportRef.current);
+                              const pdfBlob = await generateInventoryPDF(inventory, bergasonLogo);
                               // Convert to base64 to send directly — avoids Storage download roundtrip
                               pdfBase64 = await new Promise<string>((resolve, reject) => {
                                 const reader = new FileReader();
@@ -1745,7 +1775,7 @@ const InventoryEditor = () => {
                               console.error('PDF generation/upload failed:', pdfErr);
                               setSendStatus('');
                               setSending(false);
-                              alert(`PDF generation failed — the email was not sent.\n\nError: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}\n\nThis is usually caused by a CORS issue with property photos. Try again, or check the browser console for details.`);
+                              alert(`PDF generation failed — the email was not sent.\n\nError: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}`);
                               return;
                             }
 
