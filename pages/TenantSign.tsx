@@ -89,7 +89,11 @@ const TenantSign: React.FC = () => {
           pdfUrl = await uploadPDFToStorage(pdfBlob, `pdfs/${token}/signed-inventory.pdf`);
           await updateTenantProgress(token, { signaturePdfUrl: pdfUrl });
         } catch (e) {
-          console.warn('Signed inventory PDF failed:', e);
+          console.error('Signed inventory PDF failed:', e);
+          setSaving(false);
+          setSaveStatus('');
+          alert(`PDF generation failed — please try again.\n\nError: ${e instanceof Error ? e.message : String(e)}`);
+          return;
         }
       }
 
