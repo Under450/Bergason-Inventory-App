@@ -130,7 +130,7 @@ interface SendEmailRequest {
 
 export const sendInventoryEmail = functionsV1
   .region('europe-west2')
-  .runWith({ secrets: ['IONOS_PASSWORD'], timeoutSeconds: 60 })
+  .runWith({ secrets: ['IONOS_PASSWORD'], timeoutSeconds: 300, memory: '1GB' })
   .https.onRequest(async (req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -138,6 +138,17 @@ export const sendInventoryEmail = functionsV1
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
 
     const d = req.body as SendEmailRequest;
+    if (!d || typeof d !== 'object') {
+      console.error('Empty or unparseable body — request may have exceeded body size limit');
+      res.status(400).json({ error: 'Request body missing or too large. Try sending without PDF attachment.' }); return;
+    }
+
+    // If PDF is too large (>8MB base64 ≈ 6MB binary), drop it and send email without attachment
+    if (d.pdfBuffer && d.pdfBuffer.length > 8_000_000) {
+      console.warn(`PDF base64 too large (${d.pdfBuffer.length} chars) — sending email without attachment`);
+      d.pdfBuffer = undefined;
+    }
+
     const missing = ['tenantEmail', 'tenantName', 'address', 'firestoreToken'].filter(k => !d[k as keyof SendEmailRequest]);
     if (missing.length) {
       console.error('Missing required fields:', missing, 'body:', JSON.stringify(d));
