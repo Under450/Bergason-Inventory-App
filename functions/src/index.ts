@@ -155,6 +155,8 @@ export const sendInventoryEmail = functionsV1
       res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` }); return;
     }
 
+    try {
+
     const reference = generateReference(d.propertyId);
     const sentAt = new Date();
     const transporter = createTransporter(process.env.IONOS_PASSWORD!);
@@ -291,10 +293,21 @@ export const sendInventoryEmail = functionsV1
     await db.collection('dispatches').doc(reference).set(dispatchRecord);
     await db.collection('inventories').doc(d.firestoreToken)
       .collection('dispatches').add(dispatchRecord);
-    await db.collection('inventories').doc(d.firestoreToken)
-      .update({ ...firestoreUpdate });
+    // Use set+merge so this works even if the inventory doc doesn't exist in Firestore yet
+    if (Object.keys(firestoreUpdate).length > 0) {
+      await db.collection('inventories').doc(d.firestoreToken)
+        .set({ ...firestoreUpdate }, { merge: true });
+    }
 
     res.json({ success: true, reference });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : '';
+      console.error('sendInventoryEmail FAILED:', message);
+      console.error('Stack:', stack);
+      console.error('Request type:', d.type, '| Token:', d.firestoreToken, '| Email:', d.tenantEmail);
+      res.status(500).json({ error: message, type: d.type });
+    }
   }
 );
 
