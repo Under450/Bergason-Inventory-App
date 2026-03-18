@@ -1762,7 +1762,9 @@ const InventoryEditor = () => {
                             let pdfUrl: string | null = null;
                             let pdfBase64: string | undefined;
                             try {
+                              console.log('Starting PDF generation...');
                               const pdfBlob = await generateInventoryPDF(inventory, bergasonLogo);
+                              console.log('PDF generated, size:', pdfBlob.size);
                               // Convert to base64 to send directly — avoids Storage download roundtrip
                               pdfBase64 = await new Promise<string>((resolve, reject) => {
                                 const reader = new FileReader();
@@ -1770,6 +1772,7 @@ const InventoryEditor = () => {
                                 reader.onerror = reject;
                                 reader.readAsDataURL(pdfBlob);
                               });
+                              console.log('PDF base64 length:', pdfBase64?.length);
                               setSendStatus('Uploading PDF...');
                               const storagePath = `pdfs/${token}/original.pdf`;
                               pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
@@ -1778,7 +1781,8 @@ const InventoryEditor = () => {
                               console.error('PDF generation/upload failed:', pdfErr);
                               setSendStatus('');
                               setSending(false);
-                              alert(`PDF generation failed — the email was not sent.\n\nError: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}`);
+                              const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+                              alert(`PDF generation failed — the email was not sent.\n\nError: ${errMsg}\n\nPlease open browser console (F12) and check for the full error details, then send a screenshot to support.`);
                               return;
                             }
 
