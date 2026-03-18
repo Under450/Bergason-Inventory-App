@@ -1062,15 +1062,6 @@ const InventoryEditor = () => {
                               <div className="col-span-2 font-bold text-slate-800 text-sm flex items-start gap-1">
                                 <span className="text-slate-400 font-mono text-xs">{roomIndex + 1}.{itemIndex + 1}</span>
                                 {item.name}
-                                {!isPreviewMode && (
-                                  <button
-                                    onClick={() => toggleItemExcluded(room.id, item.id)}
-                                    title={item.excluded ? 'Include item' : 'Exclude item'}
-                                    className={`ml-auto text-xs transition-colors ${item.excluded ? 'text-slate-300 hover:text-green-500' : 'text-slate-300 hover:text-red-400'}`}
-                                  >
-                                    <i className={`fas ${item.excluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                                  </button>
-                                )}
                               </div>
 
                               <div className="col-span-4 space-y-2">
