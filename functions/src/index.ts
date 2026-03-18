@@ -121,6 +121,7 @@ interface SendEmailRequest {
   tenantName: string;
   address: string;
   pdfStoragePath: string;
+  pdfBuffer?: string;   // base64 PDF sent directly from client
   firestoreToken: string;
   propertyId?: string;
   signLink?: string;
@@ -146,7 +147,10 @@ export const sendInventoryEmail = functionsV1
     const reference = generateReference(d.propertyId);
     const sentAt = new Date();
     const transporter = createTransporter(process.env.IONOS_PASSWORD!);
-    const pdfBuffer = await downloadPDF(d.pdfStoragePath);
+    // Use base64 buffer sent directly from client if available; fall back to Storage download
+    const pdfBuffer: Buffer | null = d.pdfBuffer
+      ? Buffer.from(d.pdfBuffer, 'base64')
+      : await downloadPDF(d.pdfStoragePath);
     const db = getFirestore();
 
     // ── Tenant email content by type ─────────────────────────────────────────

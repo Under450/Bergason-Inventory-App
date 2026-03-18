@@ -1727,8 +1727,16 @@ const InventoryEditor = () => {
 
                             setSendStatus('Generating PDF...');
                             let pdfUrl: string | null = null;
+                            let pdfBase64: string | undefined;
                             try {
                               const pdfBlob = await captureElementAsPDF(reportRef.current);
+                              // Convert to base64 to send directly — avoids Storage download roundtrip
+                              pdfBase64 = await new Promise<string>((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(pdfBlob);
+                              });
                               setSendStatus('Uploading PDF...');
                               const storagePath = `pdfs/${token}/original.pdf`;
                               pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
@@ -1746,6 +1754,7 @@ const InventoryEditor = () => {
                                 tenantName: tenantName.trim(),
                                 address: inventory.address,
                                 pdfStoragePath: pdfUrl ? `pdfs/${token}/original.pdf` : '',
+                                pdfBuffer: pdfBase64,
                                 firestoreToken: token,
                                 propertyId: inventory.propertyId,
                               });

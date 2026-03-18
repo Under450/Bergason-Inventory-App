@@ -4,6 +4,7 @@ export interface SendEmailParams {
   tenantName: string;
   address: string;
   pdfStoragePath: string;
+  pdfBuffer?: string;   // base64 PDF — used instead of Storage download when provided
   firestoreToken: string;
   propertyId?: string;
   signLink?: string;    // for signature_request

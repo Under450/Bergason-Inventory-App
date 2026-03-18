@@ -74,9 +74,17 @@ const TenantSign: React.FC = () => {
 
       setSaveStatus('Generating signed inventory...');
       let pdfUrl: string | undefined;
+      let pdfBase64: string | undefined;
       if (signatureDocRef.current) {
         try {
           const pdfBlob = await captureElementAsPDF(signatureDocRef.current);
+          // Convert to base64 to send directly — avoids Storage download roundtrip
+          pdfBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(pdfBlob);
+          });
           setSaveStatus('Uploading document...');
           pdfUrl = await uploadPDFToStorage(pdfBlob, `pdfs/${token}/signed-inventory.pdf`);
           await updateTenantProgress(token, { signaturePdfUrl: pdfUrl });
@@ -93,6 +101,7 @@ const TenantSign: React.FC = () => {
           tenantName: data.tenantName,
           address: data.inventory.address,
           pdfStoragePath: pdfUrl ? `pdfs/${token}/signed-inventory.pdf` : '',
+          pdfBuffer: pdfBase64,
           firestoreToken: token,
         });
       } catch (e) {
