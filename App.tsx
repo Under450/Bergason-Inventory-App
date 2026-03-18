@@ -1772,6 +1772,11 @@ const InventoryEditor = () => {
                                 reader.readAsDataURL(pdfBlob);
                               });
                               console.log('PDF base64 length:', pdfBase64?.length);
+                              // If PDF base64 > 8MB, don't send inline — function will download from Storage
+                              if (pdfBase64 && pdfBase64.length > 8_000_000) {
+                                console.warn('PDF too large for inline send — will use Storage URL instead');
+                                pdfBase64 = undefined;
+                              }
                               setSendStatus('Uploading PDF...');
                               const storagePath = `pdfs/${token}/original.pdf`;
                               pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
