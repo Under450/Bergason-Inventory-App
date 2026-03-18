@@ -248,15 +248,16 @@ export const sendInventoryEmail = functionsV1
       firestoreUpdate = { reviewDispatchRef: reference };
 
     } else if (d.type === 'review_complete') {
-      pdfFilename = 'Bergason-TenantReview.pdf';
+      pdfFilename = 'Bergason-SignedInventory-WithReview.pdf';
       confirmationAction = 'Tenant completed review';
+      // Tenant email — thank you + their copy
       subject = `Your Completed Inventory Review — ${d.address} [Ref: ${reference}]`;
       html = `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
           ${headerHtml}
           <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
             <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
-            <p style="color:#475569;">Thank you for completing your inventory review for <strong>${d.address}</strong>. Your signed review report is attached.</p>
+            <p style="color:#475569;">Thank you for completing your inventory review for <strong>${d.address}</strong>. Your signed review report is attached for your records.</p>
             <p style="color:#475569;">If you raised any disputes, these have been recorded and Bergason Property Services will be in touch if further action is required.</p>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
             <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
@@ -264,6 +265,19 @@ export const sendInventoryEmail = functionsV1
           ${footerHtml}
         </div>`;
       firestoreUpdate = { reviewPdfDispatchRef: reference };
+      // Office also gets the full PDF — set confirmationExtras with ref prominently
+      confirmationExtras = `<tr style="border-bottom:1px solid #bbf7d0;background:#fff9c4;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">Dispatch Ref</td>
+        <td style="padding:8px;"><strong style="font-size:16px;color:#0f172a;">${reference}</strong></td>
+      </tr>
+      <tr style="border-bottom:1px solid #bbf7d0;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">Status</td>
+        <td style="padding:8px;color:#166534;font-weight:bold;">✅ Review complete — full inventory PDF attached</td>
+      </tr>
+      <tr style="border-bottom:1px solid #bbf7d0;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">DPS Note</td>
+        <td style="padding:8px;color:#475569;">This PDF is the full signed inventory including tenant review. Suitable for submission to your Deposit Protection Scheme.</td>
+      </tr>`;
     }
 
     // Send tenant email
