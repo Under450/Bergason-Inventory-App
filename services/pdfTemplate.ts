@@ -144,11 +144,17 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
   const activeRooms = inventory.rooms.filter(r => activeRoomIds.includes(r.id) && !r.pdfExcluded);
 
   // ── HEADER ─────────────────────────────────────────────────────────────────
-  // Logo
+  // Logo — fully wrapped so any failure is silent
   try {
     const logoB64 = await loadImageAsBase64(logoUrl);
-    if (logoB64) pdf.addImage(logoB64, 'PNG', PAGE_W/2 - 15, b.y, 30, 12, undefined, 'FAST');
-  } catch { /* skip */ }
+    if (logoB64 && logoB64.length > 100) {
+      // jsPDF addImage needs format hint — detect from data URL prefix
+      const fmt = logoB64.startsWith('/9j/') ? 'JPEG' : 'PNG';
+      pdf.addImage(logoB64, fmt, PAGE_W/2 - 15, b.y, 30, 12, undefined, 'FAST');
+    }
+  } catch (logoErr) {
+    console.warn('Logo load failed (non-fatal):', logoErr);
+  }
   b.y += 15;
 
   b.setFont('bold', 18);
@@ -436,8 +442,15 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
       }
       if (sig.data) {
         try {
-          pdf.addImage(sig.data, 'PNG', MARGIN, b.y + 10, 60, 15, undefined, 'FAST');
-        } catch { /* skip */ }
+          // sig.data is a full data URL — strip prefix for jsPDF
+          const sigB64 = sig.data.includes(',') ? sig.data.split(',')[1] : sig.data;
+          const sigFmt = sig.data.includes('jpeg') ? 'JPEG' : 'PNG';
+          if (sigB64 && sigB64.length > 10) {
+            pdf.addImage(sigB64, sigFmt, MARGIN, b.y + 10, 60, 15, undefined, 'FAST');
+          }
+        } catch (sigErr) {
+          console.warn('Signature embed failed (non-fatal):', sigErr);
+        }
       }
       b.y += 28;
     }
@@ -478,8 +491,12 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
 
       try {
         const imgB64 = await loadImageAsBase64(p.url);
-        if (imgB64) pdf.addImage(imgB64, 'JPEG', px, rowStartY, PHOTO_W, PHOTO_H, undefined, 'FAST');
-      } catch { /* skip */ }
+        if (imgB64 && imgB64.length > 100) {
+          pdf.addImage(imgB64, 'JPEG', px, rowStartY, PHOTO_W, PHOTO_H, undefined, 'FAST');
+        }
+      } catch (photoErr) {
+        console.warn('Photo embed failed (non-fatal):', photoErr);
+      }
 
       b.rect(px, rowStartY + PHOTO_H, PHOTO_W, 5, C.navy);
       b.setFont('bold', 6.5);
@@ -518,17 +535,23 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
 
 // ── Image loader ───────────────────────────────────────────────────────────────
 const loadImageAsBase64 = (url: string): Promise<string> =>
-  new Promise((resolve, reject) => {
+  new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      c.getContext('2d')!.drawImage(img, 0, 0);
-      try { resolve(c.toDataURL('image/jpeg', 0.85)); }
-      catch { reject(new Error('Canvas tainted')); }
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || 1;
+        c.height = img.naturalHeight || 1;
+        c.getContext('2d')!.drawImage(img, 0, 0);
+        const data = c.toDataURL('image/jpeg', 0.85);
+        // Strip the data:image/jpeg;base64, prefix — jsPDF wants raw base64
+        resolve(data.split(',')[1] || '');
+      } catch {
+        resolve(''); // canvas tainted — skip image
+      }
     };
-    img.onerror = () => reject(new Error('Image load failed'));
+    img.onerror = () => resolve(''); // always resolve so PDF continues
+    // Try with cache bust
     img.src = url.includes('?') ? url + '&_pdf=1' : url + '?_pdf=1';
   });
