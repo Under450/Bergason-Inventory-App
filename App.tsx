@@ -265,6 +265,12 @@ const Dashboard = () => {
                           </>
                         )}
                       </div>
+                      {/* Status badge */}
+                      {(inv as any).signatureStatus === 'signed' ? (
+                        <span className="mt-1.5 inline-block text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ Completed</span>
+                      ) : inv.status === 'LOCKED' ? (
+                        <span className="mt-1.5 inline-block text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Locked</span>
+                      ) : null}
                     </div>
                     <i className="fas fa-chevron-right text-slate-200 group-hover:text-bergason-gold shrink-0"></i>
                   </div>
