@@ -294,22 +294,32 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
   `;
 
   // ── Render to canvas ────────────────────────────────────────────────────────
-  const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;top:0;left:-10000px;z-index:-1;';
-  container.innerHTML = html;
-  document.body.appendChild(container);
+  // Use an iframe with srcdoc so the template is COMPLETELY isolated from the
+  // parent page's Tailwind stylesheet (which uses oklch). html2canvas never sees oklch.
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:0;left:-10000px;width:850px;height:2px;border:none;visibility:hidden;';
+  document.body.appendChild(iframe);
 
-  await new Promise(r => setTimeout(r, 300)); // let images render
+  const iframeDoc = iframe.contentDocument!;
+  iframeDoc.open();
+  iframeDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}</style></head><body>' + html + '</body></html>');
+  iframeDoc.close();
+
+  // Expand iframe to full content height
+  await new Promise(r => setTimeout(r, 400));
+  const contentEl = iframeDoc.body.firstElementChild as HTMLElement;
+  iframe.style.height = contentEl.scrollHeight + 'px';
+  await new Promise(r => setTimeout(r, 200));
 
   try {
-    const canvas = await html2canvas(container.firstElementChild as HTMLElement, {
+    const canvas = await html2canvas(contentEl, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
       imageTimeout: 30000,
-      // No onclone needed — template has zero oklch, pure inline hex styles
+      windowWidth: 850,
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -326,6 +336,6 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
 
     return pdf.output('blob');
   } finally {
-    document.body.removeChild(container);
+    document.body.removeChild(iframe);
   }
 };
