@@ -1429,40 +1429,7 @@ const InventoryEditor = () => {
           </div>
 
 
-          {!isReadOnly && !inventory.tenantPresent && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-              <div>
-                <h4 className="font-bold text-amber-900 text-sm uppercase tracking-wide">Documents Provided to Tenant</h4>
-                <p className="text-xs text-amber-700 mt-0.5">Tenant was not present — confirm each document was provided at handover. Upload a copy to include it in the record.</p>
-              </div>
-              <div className="space-y-2">
-                {inventory.documents.map(doc => (
-                  <div key={doc.id} className="flex items-center justify-between p-2.5 bg-white border border-amber-100 rounded-lg shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${doc.fileData ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-300'}`}>
-                        <i className={`fas ${doc.fileData ? 'fa-check' : 'fa-minus'} text-[10px]`}></i>
-                      </div>
-                      <span className="text-sm text-slate-700 font-medium">{doc.name}</span>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      {doc.fileData && (
-                        <button
-                          onClick={() => window.open(doc.fileData!, '_blank')}
-                          className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-medium"
-                        >
-                          View
-                        </button>
-                      )}
-                      <label className="cursor-pointer text-xs bg-bergason-navy text-white hover:bg-slate-700 px-2 py-1 rounded font-medium">
-                        {doc.fileData ? 'Replace' : 'Upload'}
-                        <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           {!isReadOnly && (
             <div className="space-y-6">
@@ -1617,7 +1584,24 @@ const InventoryEditor = () => {
                   </>
                 ) : (
                   <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-3">
-                    <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Submitted to Bergason — signed inventory sent</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Submitted to Bergason — signed inventory sent</p>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Re-enter tenant details and resend? This will create a new sign link.')) {
+                            setSignToken(null);
+                            setSentPdfUrl(null);
+                            setDispatchRef(null);
+                            setTenantName('');
+                            setTenantEmail('');
+                            setShowSignModal(true);
+                          }
+                        }}
+                        className="text-xs text-slate-400 hover:text-amber-600 border border-slate-200 hover:border-amber-300 px-2 py-1 rounded transition-colors"
+                      >
+                        <i className="fas fa-edit mr-1"></i> Edit &amp; Resend
+                      </button>
+                    </div>
                     {dispatchRef && (
                       <div className="bg-white border border-green-300 rounded-lg px-3 py-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Dispatch Reference</p>
