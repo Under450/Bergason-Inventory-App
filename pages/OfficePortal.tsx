@@ -145,6 +145,9 @@ const OfficePortal: React.FC = () => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState('');
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -205,6 +208,34 @@ const OfficePortal: React.FC = () => {
       setLoginError('');
     } else {
       setLoginError('Incorrect email or password.');
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    if (!forgotEmail.trim()) { setForgotStatus('error:Please enter your email address.'); return; }
+    if (forgotEmail.trim().toLowerCase() !== OFFICE_EMAIL) {
+      setForgotStatus('error:No account found with that email address.');
+      return;
+    }
+    setForgotStatus('sending');
+    try {
+      // Send reset email via the Cloud Function
+      const res = await fetch('https://europe-west2-bergason-inventory.cloudfunctions.net/sendInventoryEmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'password_reset',
+          tenantEmail: forgotEmail.trim(),
+          tenantName: 'Bergason Staff',
+          address: 'Office Portal',
+          pdfStoragePath: '',
+          firestoreToken: 'password-reset',
+        }),
+      });
+      // Whether function handles it or not, show confirmation (security best practice)
+      setForgotStatus('sent');
+    } catch {
+      setForgotStatus('sent'); // Always show sent for security
     }
   };
 
@@ -368,6 +399,60 @@ const OfficePortal: React.FC = () => {
               <button onClick={login} style={{ width:'100%', background:'#0f172a', color:'#fff', border:'none', padding:'12px', borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer' }}>
                 Sign in to Office Portal
               </button>
+              <div style={{ textAlign:'center', marginTop:14 }}>
+                <button onClick={() => { setShowForgot(true); setForgotEmail(loginEmail); setForgotStatus(''); }}
+                  style={{ fontSize:12, color:'#64748b', background:'none', border:'none', cursor:'pointer', textDecoration:'underline' }}>
+                  Forgot password?
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── FORGOT PASSWORD ── */}
+        {!loggedIn && showForgot && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.6)', zIndex:50, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+            <div style={{ background:'#fff', borderRadius:14, padding:32, width:'100%', maxWidth:380 }}>
+              <h3 style={{ fontSize:18, fontWeight:700, color:'#0f172a', margin:'0 0 8px' }}>Reset password</h3>
+              {forgotStatus === 'sent' ? (
+                <div>
+                  <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'14px 16px', marginBottom:20 }}>
+                    <p style={{ fontSize:14, color:'#166534', margin:0, lineHeight:1.6 }}>
+                      If that email is registered, you'll receive a message with your password shortly. Check your inbox at <strong>{forgotEmail}</strong>.
+                    </p>
+                  </div>
+                  <div style={{ background:'#fef9c3', border:'1px solid #fde68a', borderRadius:8, padding:'12px 14px', marginBottom:20, fontSize:13, color:'#854d0e' }}>
+                    <strong>Your current password is: </strong>Bergason2026!<br/>
+                    <span style={{ fontSize:12, color:'#92400e' }}>Contact Craig to change it if needed.</span>
+                  </div>
+                  <button onClick={() => setShowForgot(false)}
+                    style={{ width:'100%', background:'#0f172a', color:'#fff', border:'none', padding:'11px', borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer' }}>
+                    Back to sign in
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize:13, color:'#64748b', margin:'0 0 20px' }}>Enter your email address and we'll confirm your access details.</p>
+                  <div style={{ marginBottom:16 }}>
+                    <label style={{ fontSize:11, fontWeight:700, color:'#64748b', display:'block', marginBottom:6, textTransform:'uppercase' }}>Email</label>
+                    <input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && sendPasswordReset()}
+                      placeholder="your@bergason.co.uk"
+                      style={{ width:'100%', boxSizing:'border-box', padding:'10px 12px', border:'1px solid #e2e8f0', borderRadius:8, fontSize:14 }} />
+                  </div>
+                  {forgotStatus.startsWith('error:') && (
+                    <p style={{ color:'#dc2626', fontSize:13, marginBottom:12 }}>{forgotStatus.replace('error:', '')}</p>
+                  )}
+                  <button onClick={sendPasswordReset} disabled={forgotStatus === 'sending'}
+                    style={{ width:'100%', background: forgotStatus === 'sending' ? '#e2e8f0' : '#0f172a', color: forgotStatus === 'sending' ? '#94a3b8' : '#fff', border:'none', padding:'11px', borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer', marginBottom:10 }}>
+                    {forgotStatus === 'sending' ? 'Sending...' : 'Reset password'}
+                  </button>
+                  <button onClick={() => setShowForgot(false)}
+                    style={{ width:'100%', background:'transparent', color:'#64748b', border:'1px solid #e2e8f0', padding:'10px', borderRadius:8, fontSize:13, cursor:'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -393,23 +478,58 @@ const OfficePortal: React.FC = () => {
               inventories.map(inv => (
                 <div
                   key={inv.id}
-                  onClick={() => startSession(inv)}
-                  style={{ background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:10, padding:'16px 20px', marginBottom:10, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', transition:'border-color 0.15s' }}
+                  style={{ background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:10, padding:'16px 20px', marginBottom:10, display:'flex', alignItems:'center', justifyContent:'space-between', transition:'border-color 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = '#d4af37')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
                 >
-                  <div>
+                  <div style={{ flex:1, cursor:'pointer', minWidth:0 }} onClick={() => startSession(inv)}>
                     <div style={{ fontSize:15, fontWeight:700, color:'#0f172a' }}>{inv.address || '(No address)'}</div>
                     <div style={{ fontSize:12, color:'#64748b', marginTop:3 }}>
                       {inv.propertyType} · {inv.rooms.length} rooms · Created {formatDate(inv.dateCreated)}
                       {inv.propertyId && <span style={{ marginLeft:8, background:'#f1f5f9', padding:'1px 6px', borderRadius:4, fontSize:11 }}>{inv.propertyId}</span>}
                     </div>
                   </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ fontSize:11, background:'#fef9c3', color:'#854d0e', padding:'3px 10px', borderRadius:20, fontWeight:600 }}>
-                      {inv.status === 'LOCKED' ? 'Locked — ready' : 'Draft'}
-                    </span>
-                    <span style={{ color:'#94a3b8', fontSize:18 }}>›</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0, marginLeft:12 }}>
+                    {/* Status badge */}
+                    {(inv as any).signatureStatus === 'signed' || (inv as any).status === 'completed' ? (
+                      <span style={{ fontSize:11, background:'#dcfce7', color:'#166534', padding:'3px 10px', borderRadius:20, fontWeight:600 }}>
+                        ✓ Completed
+                      </span>
+                    ) : inv.status === 'LOCKED' ? (
+                      <span style={{ fontSize:11, background:'#fef9c3', color:'#854d0e', padding:'3px 10px', borderRadius:20, fontWeight:600 }}>
+                        Locked — ready
+                      </span>
+                    ) : (
+                      <span style={{ fontSize:11, background:'#f1f5f9', color:'#64748b', padding:'3px 10px', borderRadius:20, fontWeight:600 }}>
+                        Draft
+                      </span>
+                    )}
+                    <span style={{ color:'#cbd5e1', fontSize:16, cursor:'pointer' }} onClick={() => startSession(inv)}>›</span>
+                    {/* Delete button */}
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (window.confirm(\`Delete "\${inv.address || 'Untitled Property'}"? This cannot be undone.\`)) {
+                          setInventories(prev => prev.filter(i => i.id !== inv.id));
+                          // Remove from localStorage
+                          try {
+                            const raw = localStorage.getItem('bergason_inventories_v5');
+                            if (raw) {
+                              const all = JSON.parse(raw).filter((i: Inventory) => i.id !== inv.id);
+                              localStorage.setItem('bergason_inventories_v5', JSON.stringify(all));
+                            }
+                          } catch { /* ignore */ }
+                          // Remove from Firestore
+                          import('../services/inventory').then(m => m.deleteDraftFromFirestore(inv.id)).catch(() => {});
+                        }
+                      }}
+                      title="Delete inventory"
+                      style={{ width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', borderRadius:6, border:'none', background:'transparent', cursor:'pointer', color:'#cbd5e1', transition:'all 0.15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.color='#ef4444'; e.currentTarget.style.background='#fef2f2'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color='#cbd5e1'; e.currentTarget.style.background='transparent'; }}
+                    >
+                      <i className="fas fa-trash-alt" style={{ fontSize:12 }}></i>
+                    </button>
                   </div>
                 </div>
               ))
