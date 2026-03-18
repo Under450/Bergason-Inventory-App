@@ -59,7 +59,7 @@ export const captureElementAsPDF = async (element: HTMLElement): Promise<Blob> =
     const canvas = await html2canvas(clone, {
       scale: 2,
       useCORS: true,
-      allowTaint: false,
+      allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
       imageTimeout: 20000,
