@@ -168,6 +168,8 @@ const OfficePortal: React.FC = () => {
   const [pdfSentRef, setPdfSentRef] = useState<string | null>(null);
   const [reviewSentRef, setReviewSentRef] = useState<string | null>(null);
   const [status, setStatus] = useState('');
+  const [forwardEmail, setForwardEmail] = useState('');
+  const [forwardStatus, setForwardStatus] = useState<'idle'|'sending'|'sent'|'error'>('idle');
 
   useEffect(() => {
     if (loggedIn) {
@@ -333,6 +335,25 @@ const OfficePortal: React.FC = () => {
       alert(`Failed to send review link: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSendingReview(false);
+    }
+  };
+
+  const sendForwardEmail = async () => {
+    if (!token || !selected || !forwardEmail.trim()) return;
+    setForwardStatus('sending');
+    try {
+      await sendInventoryEmail({
+        type: 'signature_confirmation',
+        tenantEmail: forwardEmail.trim(),
+        tenantName: tenantName,
+        address: selected.address,
+        pdfStoragePath: pdfUrl ? `pdfs/${token}/office-signed.pdf` : '',
+        pdfBuffer: pdfBase64,
+        firestoreToken: token,
+      });
+      setForwardStatus('sent');
+    } catch {
+      setForwardStatus('error');
     }
   };
 
@@ -805,6 +826,39 @@ const OfficePortal: React.FC = () => {
                     <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:12, color:'#2563eb', textDecoration:'underline' }}>View PDF</a>
                   </div>
                 )}
+
+                {/* Forward for safe storage */}
+                <div style={{ marginTop:12, padding:'14px 16px', background:'#fff', border:'1px solid #e2e8f0', borderRadius:8 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>
+                    Send copy for safe storage
+                  </div>
+                  <p style={{ fontSize:12, color:'#94a3b8', marginBottom:10 }}>
+                    Forward the signed PDF to any email address for backup — useful if you need to send to DPS or external storage.
+                  </p>
+                  {forwardStatus === 'sent' ? (
+                    <div style={{ fontSize:12, color:'#166534', background:'#f0fdf4', border:'1px solid #86efac', borderRadius:6, padding:'8px 12px', fontWeight:600 }}>
+                      ✓ Copy sent to {forwardEmail}
+                    </div>
+                  ) : (
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input
+                        type="email"
+                        value={forwardEmail}
+                        onChange={e => setForwardEmail(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && sendForwardEmail()}
+                        placeholder="backup@email.com or dps@provider.com"
+                        style={{ flex:1, fontSize:12, padding:'8px 10px', border:'1px solid #e2e8f0', borderRadius:6, outline:'none' }}
+                      />
+                      <button
+                        onClick={sendForwardEmail}
+                        disabled={forwardStatus === 'sending' || !forwardEmail.trim()}
+                        style={{ fontSize:12, background: forwardStatus === 'sending' || !forwardEmail.trim() ? '#e2e8f0' : '#0f172a', color: forwardStatus === 'sending' || !forwardEmail.trim() ? '#94a3b8' : '#fff', border:'none', padding:'8px 16px', borderRadius:6, fontWeight:700, cursor:'pointer' }}
+                      >
+                        {forwardStatus === 'sending' ? '...' : forwardStatus === 'error' ? 'Retry' : 'Send'}
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <div style={{ marginTop:16, textAlign:'center' }}>
                   <button onClick={() => { setSelected(null); setStep(1); setPortalView('signing'); }} style={{ background:'transparent', color:'#64748b', border:'1px solid #e2e8f0', padding:'9px 20px', borderRadius:8, fontSize:13, cursor:'pointer' }}>
