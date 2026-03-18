@@ -958,20 +958,6 @@ const InventoryEditor = () => {
                           >
                             <i className={`fas ${room.pdfExcluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                           </button>
-                          {/* Divider */}
-                          <span className="text-slate-200 text-lg font-thin select-none">|</span>
-                          {/* Items eye — toggles all items excluded/included */}
-                          <button
-                            onClick={e => { e.stopPropagation(); toggleAllRoomItems(room.id); }}
-                            title={room.items.some(i => !i.excluded) ? 'Exclude all items in this room from PDF' : 'Include all items in this room in PDF'}
-                            className={`text-xs px-2 py-1 rounded transition-colors border ${
-                              room.items.some(i => !i.excluded)
-                                ? 'text-slate-400 hover:text-red-400 border-slate-200 hover:border-red-200'
-                                : 'text-slate-300 hover:text-green-500 border-slate-100 hover:border-green-200'
-                            }`}
-                          >
-                            <i className={`fas ${room.items.some(i => !i.excluded) ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-                          </button>
                           {/* Room eye — excludes from tenant review */}
                           <button
                             onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
@@ -983,6 +969,7 @@ const InventoryEditor = () => {
                             }`}
                           >
                             <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide">Room</span>
                           </button>
                         </>
                       )}
