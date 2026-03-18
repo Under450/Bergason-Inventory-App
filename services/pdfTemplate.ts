@@ -146,16 +146,22 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
   // ── HEADER ─────────────────────────────────────────────────────────────────
   // Logo — fully wrapped so any failure is silent
   try {
-    const logoB64 = await loadImageAsBase64(logoUrl);
+    const { b64: logoB64, w: logoNW, h: logoNH } = await loadImageWithDimensions(logoUrl);
     if (logoB64 && logoB64.length > 100) {
-      // jsPDF addImage needs format hint — detect from data URL prefix
+      const maxW = 50; const maxH = 20;
+      const ratio = Math.min(maxW / (logoNW || maxW), maxH / (logoNH || maxH));
+      const drawW = (logoNW || maxW) * ratio;
+      const drawH = (logoNH || maxH) * ratio;
       const fmt = logoB64.startsWith('/9j/') ? 'JPEG' : 'PNG';
-      pdf.addImage(logoB64, fmt, PAGE_W/2 - 15, b.y, 30, 12, undefined, 'FAST');
+      pdf.addImage(logoB64, fmt, PAGE_W/2 - drawW/2, b.y, drawW, drawH, undefined, 'FAST');
+      b.y += drawH + 4;
+    } else {
+      b.y += 15;
     }
   } catch (logoErr) {
     console.warn('Logo load failed (non-fatal):', logoErr);
+    b.y += 15;
   }
-  b.y += 15;
 
   b.setFont('bold', 18);
   b.setColor(C.navy);
@@ -490,9 +496,15 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
       const px = MARGIN + col * (PHOTO_W + GAP);
 
       try {
-        const imgB64 = await loadImageAsBase64(p.url);
+        const { b64: imgB64, w: imgNW, h: imgNH } = await loadImageWithDimensions(p.url);
         if (imgB64 && imgB64.length > 100) {
-          pdf.addImage(imgB64, 'JPEG', px, rowStartY, PHOTO_W, PHOTO_H, undefined, 'FAST');
+          // Fit image into PHOTO_W x PHOTO_H box preserving aspect ratio
+          const ratio = Math.min(PHOTO_W / (imgNW || PHOTO_W), PHOTO_H / (imgNH || PHOTO_H));
+          const drawW = (imgNW || PHOTO_W) * ratio;
+          const drawH = (imgNH || PHOTO_H) * ratio;
+          const offX = (PHOTO_W - drawW) / 2;
+          const offY = (PHOTO_H - drawH) / 2;
+          pdf.addImage(imgB64, 'JPEG', px + offX, rowStartY + offY, drawW, drawH, undefined, 'FAST');
         }
       } catch (photoErr) {
         console.warn('Photo embed failed (non-fatal):', photoErr);
@@ -534,7 +546,7 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
 };
 
 // ── Image loader ───────────────────────────────────────────────────────────────
-const loadImageAsBase64 = (url: string): Promise<string> =>
+const loadImageWithDimensions = (url: string): Promise<{ b64: string; w: number; h: number }> =>
   new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -545,13 +557,11 @@ const loadImageAsBase64 = (url: string): Promise<string> =>
         c.height = img.naturalHeight || 1;
         c.getContext('2d')!.drawImage(img, 0, 0);
         const data = c.toDataURL('image/jpeg', 0.85);
-        // Strip the data:image/jpeg;base64, prefix — jsPDF wants raw base64
-        resolve(data.split(',')[1] || '');
+        resolve({ b64: data.split(',')[1] || '', w: img.naturalWidth, h: img.naturalHeight });
       } catch {
-        resolve(''); // canvas tainted — skip image
+        resolve({ b64: '', w: 0, h: 0 });
       }
     };
-    img.onerror = () => resolve(''); // always resolve so PDF continues
-    // Try with cache bust
+    img.onerror = () => resolve({ b64: '', w: 0, h: 0 });
     img.src = url.includes('?') ? url + '&_pdf=1' : url + '?_pdf=1';
   });
