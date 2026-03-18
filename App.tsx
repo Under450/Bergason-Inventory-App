@@ -3,7 +3,7 @@ import bergasonLogo from './bergasonlogo.png';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
-import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress } from './services/inventory';
+import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, saveDraftToFirestore, loadDraftsFromFirestore, deleteDraftFromFirestore } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { generateInventoryPDF } from './services/pdfTemplate';
 import { uploadPDFToStorage } from './services/storage';
@@ -81,6 +81,8 @@ const saveInventory = (inventory: Inventory) => {
     all.push(inventory);
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  // Sync to Firestore so other devices (phone, tablet, etc.) can see it
+  saveDraftToFirestore(inventory).catch(() => { /* offline — local only */ });
 };
 
 const getInventoryById = (id: string): Inventory | undefined => {
@@ -90,6 +92,7 @@ const getInventoryById = (id: string): Inventory | undefined => {
 const deleteInventoryById = (id: string) => {
   const all = getInventories().filter(i => i.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  deleteDraftFromFirestore(id).catch(() => { /* ignore */ });
   // Also remove token state for this inventory
   try {
     const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -114,7 +117,19 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    setInventories(getInventories().sort((a, b) => b.dateUpdated - a.dateUpdated));
+    // Load local inventories immediately
+    const local = getInventories();
+    setInventories(local.sort((a, b) => b.dateUpdated - a.dateUpdated));
+    // Then merge with Firestore drafts (catches inventories created on other devices)
+    loadDraftsFromFirestore().then(remote => {
+      const localIds = new Set(local.map(i => i.id));
+      const newRemote = remote.filter(i => !localIds.has(i.id));
+      if (newRemote.length > 0) {
+        // Save new remote ones to local storage so they persist offline
+        newRemote.forEach(inv => saveInventory(inv));
+        setInventories(getInventories().sort((a, b) => b.dateUpdated - a.dateUpdated));
+      }
+    }).catch(() => { /* offline — local only */ });
   }, []);
 
   const createNew = (propertyTypeLabel: string) => {
