@@ -214,12 +214,7 @@ const Dashboard = () => {
           >
             <i className="fas fa-plus mr-2"></i> New Inventory
           </Button>
-          <Button
-            onClick={() => navigate('/office')}
-            className="bg-white/10 text-white hover:bg-white/20 border border-white/30 px-6 py-3 rounded-full font-bold transition-transform hover:scale-105"
-          >
-            <i className="fas fa-building mr-2"></i> Office Portal
-          </Button>
+
         </div>
       </header>
 
@@ -440,7 +435,7 @@ const InventoryEditor = () => {
       const data = getInventoryById(id);
       if (data) {
         if (!data.rooms || data.rooms.length === 0) {
-          navigate('/');
+          navigate('/inventories');
           return;
         }
 
@@ -478,7 +473,7 @@ const InventoryEditor = () => {
           setReviewDispatchRef(saved.reviewDispatchRef ?? null);
         }
       } else {
-        navigate('/');
+        navigate('/inventories');
       }
     }
   }, [id, navigate]);
@@ -676,7 +671,7 @@ const InventoryEditor = () => {
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm print:hidden">
           <div className="flex justify-between items-center px-4 py-3">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/inventories')}
               className="text-slate-500 hover:text-bergason-navy flex items-center gap-1 font-medium"
             >
               <i className="fas fa-chevron-left"></i> <span className="hidden xs:inline">Back</span>
@@ -1985,11 +1980,11 @@ const App = () => {
   return (
     <HashRouter>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<OfficePortal />} />
+        <Route path="/inventories" element={<Dashboard />} />
         <Route path="/inventory/:id" element={<InventoryEditor />} />
         <Route path="/sign/:token" element={<TenantSign />} />
         <Route path="/review/:token" element={<TenantReview />} />
-        <Route path="/office" element={<OfficePortal />} />
       </Routes>
     </HashRouter>
   );
