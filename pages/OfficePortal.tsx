@@ -142,6 +142,7 @@ const SignaturePad = ({ onSave }: { onSave: (data: string) => void }) => {
 const OfficePortal: React.FC = () => {
   const navigate = useNavigate();
   const [loggedIn, setLoggedIn] = useState(false);
+  const [portalView, setPortalView] = useState<'home' | 'signing'>('home');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -352,12 +353,12 @@ const OfficePortal: React.FC = () => {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
           {loggedIn && selected && (
-            <button onClick={() => setSelected(null)} style={{ fontSize:12, color:'#94a3b8', background:'none', border:'1px solid #334155', padding:'5px 12px', borderRadius:6, cursor:'pointer' }}>
+            <button onClick={() => { setSelected(null); setPortalView('signing'); }} style={{ fontSize:12, color:'#94a3b8', background:'none', border:'1px solid #334155', padding:'5px 12px', borderRadius:6, cursor:'pointer' }}>
               ← All inventories
             </button>
           )}
           {loggedIn && (
-            <button onClick={() => { setLoggedIn(false); setSelected(null); }} style={{ fontSize:12, color:'#94a3b8', background:'none', border:'none', cursor:'pointer' }}>
+            <button onClick={() => { setLoggedIn(false); setSelected(null); setPortalView('home'); }} style={{ fontSize:12, color:'#94a3b8', background:'none', border:'none', cursor:'pointer' }}>
               Sign out
             </button>
           )}
@@ -457,12 +458,55 @@ const OfficePortal: React.FC = () => {
           </div>
         )}
 
-        {/* ── INVENTORY LIST ── */}
-        {loggedIn && !selected && (
+        {/* ── HOME: TWO CHOICE CARDS ── */}
+        {loggedIn && !selected && portalView === 'home' && (
+          <div style={{ maxWidth:600, margin:'60px auto' }}>
+            <div style={{ textAlign:'center', marginBottom:40 }}>
+              <div style={{ fontSize:11, letterSpacing:3, color:'#94a3b8', textTransform:'uppercase', marginBottom:8 }}>Bergason Office Portal</div>
+              <div style={{ fontSize:26, fontWeight:700, color:'#0f172a' }}>What would you like to do?</div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+              {/* New Inventory */}
+              <div
+                onClick={() => navigate('/inventories')}
+                style={{ background:'#0f172a', borderRadius:16, padding:'36px 28px', cursor:'pointer', textAlign:'center', transition:'transform 0.15s, box-shadow 0.15s', boxShadow:'0 4px 20px rgba(15,23,42,0.15)' }}
+                onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 8px 30px rgba(15,23,42,0.25)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 4px 20px rgba(15,23,42,0.15)'; }}
+              >
+                <div style={{ width:56, height:56, borderRadius:12, background:'rgba(212,175,55,0.15)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+                  <i className="fas fa-plus" style={{ fontSize:24, color:'#d4af37' }}></i>
+                </div>
+                <div style={{ fontSize:18, fontWeight:700, color:'#fff', marginBottom:8 }}>New Inventory</div>
+                <div style={{ fontSize:13, color:'#94a3b8', lineHeight:1.5 }}>Create a new property inventory at the property</div>
+              </div>
+              {/* Office Signing */}
+              <div
+                onClick={() => setPortalView('signing')}
+                style={{ background:'#0f172a', borderRadius:16, padding:'36px 28px', cursor:'pointer', textAlign:'center', transition:'transform 0.15s, box-shadow 0.15s', boxShadow:'0 4px 20px rgba(15,23,42,0.15)' }}
+                onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 8px 30px rgba(15,23,42,0.25)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 4px 20px rgba(15,23,42,0.15)'; }}
+              >
+                <div style={{ width:56, height:56, borderRadius:12, background:'rgba(212,175,55,0.15)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+                  <i className="fas fa-pen-nib" style={{ fontSize:24, color:'#d4af37' }}></i>
+                </div>
+                <div style={{ fontSize:18, fontWeight:700, color:'#fff', marginBottom:8 }}>Office Signing</div>
+                <div style={{ fontSize:13, color:'#94a3b8', lineHeight:1.5 }}>Get a tenant to sign an inventory in the office</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── INVENTORY LIST (signing mode) ── */}
+        {loggedIn && !selected && portalView === 'signing' && (
           <div>
-            <div style={{ marginBottom:24 }}>
-              <h1 style={{ fontSize:22, fontWeight:700, color:'#0f172a', margin:0 }}>Inventories ready to sign</h1>
-              <p style={{ color:'#64748b', fontSize:14, margin:'4px 0 0' }}>Select a property to start an office signing session with the tenant.</p>
+            <div style={{ marginBottom:24, display:'flex', alignItems:'center', gap:16 }}>
+              <button onClick={() => setPortalView('home')} style={{ background:'transparent', border:'none', cursor:'pointer', color:'#64748b', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
+                ← Back
+              </button>
+              <div>
+                <h1 style={{ fontSize:22, fontWeight:700, color:'#0f172a', margin:0 }}>Inventories ready to sign</h1>
+                <p style={{ color:'#64748b', fontSize:14, margin:'4px 0 0' }}>Select a property to start an office signing session with the tenant.</p>
+              </div>
             </div>
             {loading ? (
               <div style={{ textAlign:'center', padding:60, color:'#94a3b8' }}>Loading inventories...</div>
@@ -509,7 +553,7 @@ const OfficePortal: React.FC = () => {
                     <button
                       onClick={e => {
                         e.stopPropagation();
-                        if (window.confirm(\`Delete "\${inv.address || 'Untitled Property'}"? This cannot be undone.\`)) {
+                        if (window.confirm(`Delete "${inv.address || 'Untitled Property'}"? This cannot be undone.`)) {
                           setInventories(prev => prev.filter(i => i.id !== inv.id));
                           // Remove from localStorage
                           try {
@@ -760,7 +804,7 @@ const OfficePortal: React.FC = () => {
                 )}
 
                 <div style={{ marginTop:16, textAlign:'center' }}>
-                  <button onClick={() => { setSelected(null); setStep(1); }} style={{ background:'transparent', color:'#64748b', border:'1px solid #e2e8f0', padding:'9px 20px', borderRadius:8, fontSize:13, cursor:'pointer' }}>
+                  <button onClick={() => { setSelected(null); setStep(1); setPortalView('signing'); }} style={{ background:'transparent', color:'#64748b', border:'1px solid #e2e8f0', padding:'9px 20px', borderRadius:8, fontSize:13, cursor:'pointer' }}>
                     ← Back to inventory list
                   </button>
                 </div>
