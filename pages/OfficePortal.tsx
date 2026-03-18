@@ -778,8 +778,20 @@ const OfficePortal: React.FC = () => {
                       Sends the signed inventory PDF to the Bergason office email as your official copy — held until the tenant completes their review.
                     </div>
                     {pdfSentRef ? (
-                      <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:6, padding:'8px 12px', fontSize:12, color:'#166534', fontWeight:600 }}>
-                        ✓ Office copy sent · Ref: {pdfSentRef}
+                      <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'12px 14px' }}>
+                        <div style={{ fontSize:11, color:'#166534', fontWeight:700, marginBottom:4 }}>✓ Office copy sent</div>
+                        <div style={{ fontSize:11, color:'#64748b', marginBottom:6 }}>Keep this reference for your records:</div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ fontSize:16, fontWeight:700, color:'#0f172a', background:'#fff', border:'1px solid #86efac', borderRadius:6, padding:'6px 12px', letterSpacing:1, flex:1, textAlign:'center' }}>
+                            {pdfSentRef}
+                          </div>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(pdfSentRef)}
+                            title="Copy reference"
+                            style={{ fontSize:11, background:'#0f172a', color:'#fff', border:'none', padding:'6px 10px', borderRadius:6, cursor:'pointer', fontWeight:600 }}>
+                            Copy
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <button
@@ -805,8 +817,20 @@ const OfficePortal: React.FC = () => {
                         style={{ width:'100%', boxSizing:'border-box', padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:6, fontSize:12 }} />
                     </div>
                     {reviewSentRef ? (
-                      <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:6, padding:'8px 12px', fontSize:12, color:'#166534', fontWeight:600 }}>
-                        ✓ Review link sent · Ref: {reviewSentRef}
+                      <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'12px 14px' }}>
+                        <div style={{ fontSize:11, color:'#166634', fontWeight:700, marginBottom:4 }}>✓ Review link sent to {tenantEmail}</div>
+                        <div style={{ fontSize:11, color:'#64748b', marginBottom:6 }}>Keep this reference for your records:</div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ fontSize:16, fontWeight:700, color:'#0f172a', background:'#fff', border:'1px solid #86efac', borderRadius:6, padding:'6px 12px', letterSpacing:1, flex:1, textAlign:'center' }}>
+                            {reviewSentRef}
+                          </div>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(reviewSentRef)}
+                            title="Copy reference"
+                            style={{ fontSize:11, background:'#0f172a', color:'#fff', border:'none', padding:'6px 10px', borderRadius:6, cursor:'pointer', fontWeight:600 }}>
+                            Copy
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <button
