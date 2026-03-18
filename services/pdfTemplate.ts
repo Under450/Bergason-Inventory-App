@@ -50,7 +50,7 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
 
   // Active rooms (excluding deactivated rooms)
   const activeRoomIds = inventory.activeRoomIds || inventory.rooms.map(r => r.id);
-  const activeRooms = inventory.rooms.filter(r => activeRoomIds.includes(r.id));
+  const activeRooms = inventory.rooms.filter(r => activeRoomIds.includes(r.id) && !r.pdfExcluded);
 
   // Collect all photos for the appendix (non-excluded items only)
   const photoItems: { roomName: string; itemName: string; url: string; idx: number }[] = [];
@@ -198,7 +198,7 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
       <td style="${S.tdLabel}">${sig.type}${sig.name ? ` — ${sig.name}` : ''}</td>
       <td style="${S.td}">
         ${sig.data ? `<img src="${sig.data}" style="max-width:200px;height:60px;object-fit:contain;" />` : '<span style="color:#94a3b8;">Not signed</span>'}
-        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">${sig.timestamp ? new Date(sig.timestamp).toLocaleString('en-GB') : ''}</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">${sig.date ? new Date(sig.date).toLocaleString('en-GB') : ''}</div>
       </td>
     </tr>
   `).join('');
