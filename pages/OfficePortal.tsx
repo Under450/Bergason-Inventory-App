@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import bergasonLogo from '../bergasonlogo.png';
 import { useNavigate } from 'react-router-dom';
-import { loadDraftsFromFirestore, saveInventoryToFirestore, updateTenantProgress } from '../services/inventory';
+import { loadDraftsFromFirestore, loadAllInventoriesForPortal, saveInventoryToFirestore, updateTenantProgress } from '../services/inventory';
 import { sendInventoryEmail } from '../services/email';
 import { uploadPDFToStorage } from '../services/storage';
 import { generateInventoryPDF } from '../services/pdfTemplate';
@@ -168,9 +168,33 @@ const OfficePortal: React.FC = () => {
   useEffect(() => {
     if (loggedIn) {
       setLoading(true);
-      loadDraftsFromFirestore()
-        .then(invs => setInventories(invs.filter(i => i.status === 'DRAFT' || i.status === 'LOCKED')))
-        .catch(() => setInventories([]))
+      // Load from localStorage first (immediate)
+      const STORAGE_KEY = 'bergason_inventories_v5';
+      let local: Inventory[] = [];
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) local = JSON.parse(raw);
+      } catch { /* ignore */ }
+      if (local.length > 0) setInventories(local.sort((a, b) => b.dateUpdated - a.dateUpdated));
+
+      // Then merge with Firestore (catches inventories from other devices)
+      loadAllInventoriesForPortal()
+        .then(remote => {
+          const localIds = new Set(local.map((i: Inventory) => i.id));
+          const merged = [...local];
+          for (const inv of remote) {
+            if (!localIds.has(inv.id)) merged.push(inv);
+            else {
+              // Update local copy with remote if remote is newer
+              const idx = merged.findIndex(i => i.id === inv.id);
+              if (idx >= 0 && (inv.dateUpdated || 0) > (merged[idx].dateUpdated || 0)) {
+                merged[idx] = inv;
+              }
+            }
+          }
+          setInventories(merged.sort((a, b) => (b.dateUpdated || 0) - (a.dateUpdated || 0)));
+        })
+        .catch(() => { /* keep local results */ })
         .finally(() => setLoading(false));
     }
   }, [loggedIn]);
