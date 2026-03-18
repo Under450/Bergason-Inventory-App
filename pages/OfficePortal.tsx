@@ -748,15 +748,17 @@ const OfficePortal: React.FC = () => {
                 </div>
 
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-                  {/* Send signed copy */}
+
+                  {/* Office copy — send to Bergason */}
                   <div style={{ border:'1.5px solid #e2e8f0', borderRadius:10, padding:20 }}>
-                    <div style={{ fontSize:14, fontWeight:700, color:'#0f172a', marginBottom:6 }}>Send signed copy to tenant</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Bergason Office Copy</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:'#0f172a', marginBottom:6 }}>Save signed PDF to office</div>
                     <div style={{ fontSize:12, color:'#64748b', marginBottom:16, lineHeight:1.5 }}>
-                      Email the signed PDF to <strong>{tenantEmail}</strong> for their records.
+                      Sends the signed inventory PDF to the Bergason office email as your official copy — held until the tenant completes their review.
                     </div>
                     {pdfSentRef ? (
                       <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:6, padding:'8px 12px', fontSize:12, color:'#166534', fontWeight:600 }}>
-                        ✓ Sent · Ref: {pdfSentRef}
+                        ✓ Office copy sent · Ref: {pdfSentRef}
                       </div>
                     ) : (
                       <button
@@ -764,25 +766,26 @@ const OfficePortal: React.FC = () => {
                         disabled={sendingPdf}
                         style={{ width:'100%', background: sendingPdf ? '#e2e8f0' : '#0f172a', color: sendingPdf ? '#94a3b8' : '#fff', border:'none', padding:'11px', borderRadius:8, fontSize:13, fontWeight:700, cursor: sendingPdf ? 'not-allowed' : 'pointer' }}
                       >
-                        {sendingPdf ? 'Sending...' : 'Send signed PDF'}
+                        {sendingPdf ? 'Sending...' : 'Send office copy'}
                       </button>
                     )}
                   </div>
 
-                  {/* Send review link */}
-                  <div style={{ border:'1.5px solid #e2e8f0', borderRadius:10, padding:20 }}>
-                    <div style={{ fontSize:14, fontWeight:700, color:'#0f172a', marginBottom:6 }}>Send 5-day review link</div>
+                  {/* Review link — send to tenant on move-in day */}
+                  <div style={{ border:'1.5px solid #d4af37', borderRadius:10, padding:20, background:'#fffdf5' }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:'#d4af37', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Send to Tenant</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:'#0f172a', marginBottom:6 }}>Send review link to tenant</div>
                     <div style={{ fontSize:12, color:'#64748b', marginBottom:12, lineHeight:1.5 }}>
-                      Start the review window. Move-in date: <strong>{new Date(moveInDate).toLocaleDateString('en-GB', { day:'numeric', month:'long' })}</strong>. Expires after 5 days.
+                      Sends tenant the link to go through the inventory room by room on move-in day. They have 5 days to agree or raise disputes.
                     </div>
                     <div style={{ marginBottom:12 }}>
-                      <label style={{ fontSize:11, color:'#64748b', display:'block', marginBottom:4 }}>Move-in date</label>
+                      <label style={{ fontSize:11, color:'#64748b', display:'block', marginBottom:4 }}>Move-in date (5-day window starts here)</label>
                       <input type="date" value={moveInDate} onChange={e => setMoveInDate(e.target.value)}
                         style={{ width:'100%', boxSizing:'border-box', padding:'7px 10px', border:'1px solid #e2e8f0', borderRadius:6, fontSize:12 }} />
                     </div>
                     {reviewSentRef ? (
                       <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:6, padding:'8px 12px', fontSize:12, color:'#166534', fontWeight:600 }}>
-                        ✓ Sent · Ref: {reviewSentRef}
+                        ✓ Review link sent · Ref: {reviewSentRef}
                       </div>
                     ) : (
                       <button
@@ -790,7 +793,7 @@ const OfficePortal: React.FC = () => {
                         disabled={sendingReview}
                         style={{ width:'100%', background: sendingReview ? '#e2e8f0' : '#d4af37', color: sendingReview ? '#94a3b8' : '#0f172a', border:'none', padding:'11px', borderRadius:8, fontSize:13, fontWeight:700, cursor: sendingReview ? 'not-allowed' : 'pointer' }}
                       >
-                        {sendingReview ? 'Sending...' : 'Send review link'}
+                        {sendingReview ? 'Sending...' : 'Send review link to tenant'}
                       </button>
                     )}
                   </div>
