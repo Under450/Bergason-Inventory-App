@@ -971,7 +971,6 @@ const InventoryEditor = () => {
                             }`}
                           >
                             <i className={`fas ${room.items.some(i => !i.excluded) ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-                            <span className="ml-1 hidden md:inline text-[10px] font-bold uppercase tracking-wide">Items</span>
                           </button>
                           {/* Room eye — excludes from tenant review */}
                           <button
@@ -984,7 +983,6 @@ const InventoryEditor = () => {
                             }`}
                           >
                             <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-                            <span className="ml-1 hidden md:inline text-[10px] font-bold uppercase tracking-wide">Room</span>
                           </button>
                         </>
                       )}
