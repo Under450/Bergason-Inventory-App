@@ -436,6 +436,16 @@ const InventoryEditor = () => {
   const [reviewDispatchRef, setReviewDispatchRef] = useState<string | null>(null);
   const [moveInDateStr, setMoveInDateStr] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
+  // Warn if user tries to close tab or navigate away via browser controls
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   useEffect(() => {
     if (id) {
       const data = getInventoryById(id);
@@ -677,10 +687,19 @@ const InventoryEditor = () => {
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm print:hidden">
           <div className="flex justify-between items-center px-4 py-3">
             <button
-              onClick={() => navigate('/inventories')}
-              className="text-slate-500 hover:text-bergason-navy flex items-center gap-1 font-medium"
+              onClick={() => {
+                // Auto-save before leaving so nothing is lost
+                if (inventory) {
+                  const updated = { ...inventory, dateUpdated: Date.now() };
+                  const all = getInventories().map(i => i.id === updated.id ? updated : i);
+                  localStorage.setItem('bergason_inventories_v5', JSON.stringify(all));
+                  import('./services/inventory').then(m => m.saveDraftToFirestore(updated)).catch(() => {});
+                }
+                navigate('/inventories');
+              }}
+              className="text-slate-500 hover:text-bergason-navy flex items-center gap-1 font-medium text-sm"
             >
-              <i className="fas fa-chevron-left"></i> <span className="hidden xs:inline">Back</span>
+              <i className="fas fa-save mr-1"></i> <span className="hidden xs:inline">Save &amp; Exit</span><span className="xs:hidden">Exit</span>
             </button>
             <div className="font-serif font-bold text-bergason-navy text-lg truncate px-2">
               {inventory.address || 'New Inventory'}
