@@ -306,7 +306,7 @@ const OfficePortal: React.FC = () => {
               Sign out
             </button>
           )}
-          <button onClick={() => navigate('/')} style={{ fontSize:12, color:'#64748b', background:'none', border:'none', cursor:'pointer' }}>
+          <button onClick={() => navigate('/inventories')} style={{ fontSize:12, color:'#64748b', background:'none', border:'none', cursor:'pointer' }}>
             ← Inventory app
           </button>
         </div>
@@ -361,7 +361,7 @@ const OfficePortal: React.FC = () => {
               <div style={{ textAlign:'center', padding:60, color:'#94a3b8' }}>
                 <div style={{ fontSize:32, marginBottom:12 }}>📋</div>
                 <div>No inventories found. Create one in the inventory app first.</div>
-                <button onClick={() => navigate('/')} style={{ marginTop:16, background:'#0f172a', color:'#fff', border:'none', padding:'10px 20px', borderRadius:8, fontSize:13, cursor:'pointer' }}>
+                <button onClick={() => navigate('/inventories')} style={{ marginTop:16, background:'#0f172a', color:'#fff', border:'none', padding:'10px 20px', borderRadius:8, fontSize:13, cursor:'pointer' }}>
                   Go to Inventory App
                 </button>
               </div>
