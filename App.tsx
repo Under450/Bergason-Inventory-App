@@ -539,6 +539,16 @@ const InventoryEditor = () => {
     updateInventory({ rooms });
   };
 
+  const toggleRoomPdfExcluded = (roomId: string) => {
+    if (!inventory) return;
+    const room = inventory.rooms.find(r => r.id === roomId);
+    if (!room) return;
+    const rooms = inventory.rooms.map(r =>
+      r.id === roomId ? { ...r, pdfExcluded: !r.pdfExcluded } : r
+    );
+    updateInventory({ rooms });
+  };
+
   const addPhoto = async (roomId: string, itemId: string, file: File) => {
     if (!inventory) return;
     setUploadingItems(prev => new Set(prev).add(itemId));
@@ -906,9 +916,10 @@ const InventoryEditor = () => {
             const isKitchen = room.name === "Kitchen";
             const activeIds = inventory.activeRoomIds;
             const isRoomActive = !activeIds || activeIds.includes(room.id);
+            const isRoomPdfExcluded = !!room.pdfExcluded;
 
-            // In preview/print mode, skip inactive rooms entirely
-            if (isPreviewMode && !isRoomActive) return null;
+            // In preview/print mode, skip pdf-excluded and inactive rooms entirely
+            if (isPreviewMode && (isRoomPdfExcluded || !isRoomActive)) return null;
 
             return (
               <div key={room.id} className="break-inside-avoid">
@@ -918,7 +929,7 @@ const InventoryEditor = () => {
                   </h2>
                 )}
 
-                <div className={`border rounded-lg overflow-hidden mb-4 ${!isRoomActive ? 'border-slate-100' : 'border-slate-200'}`}>
+                <div className={`border rounded-lg overflow-hidden mb-4 ${isRoomPdfExcluded ? 'border-red-100 opacity-50' : !isRoomActive ? 'border-slate-100' : 'border-slate-200'}`}>
                   {/* Room Header */}
                   <div
                     onClick={() => !isPreviewMode && toggleRoom(room.id)}
@@ -935,6 +946,21 @@ const InventoryEditor = () => {
                     <div className="flex items-center gap-2">
                       {!isPreviewMode && (
                         <>
+                          {/* Main eye — excludes entire room from PDF (header + all content) */}
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleRoomPdfExcluded(room.id); }}
+                            title={room.pdfExcluded ? 'Include this room in PDF' : 'Exclude entire room from PDF'}
+                            className={`text-sm px-2.5 py-1.5 rounded transition-colors border-2 font-bold ${
+                              room.pdfExcluded
+                                ? 'text-red-400 border-red-200 bg-red-50 hover:text-green-500 hover:border-green-200 hover:bg-green-50'
+                                : 'text-slate-500 border-slate-300 bg-white hover:text-red-400 hover:border-red-200 hover:bg-red-50'
+                            }`}
+                          >
+                            <i className={`fas ${room.pdfExcluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                          </button>
+                          {/* Divider */}
+                          <span className="text-slate-200 text-lg font-thin select-none">|</span>
+                          {/* Items eye — toggles all items excluded/included */}
                           <button
                             onClick={e => { e.stopPropagation(); toggleAllRoomItems(room.id); }}
                             title={room.items.some(i => !i.excluded) ? 'Exclude all items in this room from PDF' : 'Include all items in this room in PDF'}
@@ -947,6 +973,7 @@ const InventoryEditor = () => {
                             <i className={`fas ${room.items.some(i => !i.excluded) ? 'fa-eye' : 'fa-eye-slash'}`}></i>
                             <span className="ml-1 hidden md:inline text-[10px] font-bold uppercase tracking-wide">Items</span>
                           </button>
+                          {/* Room eye — excludes from tenant review */}
                           <button
                             onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
                             title={isRoomActive ? 'Exclude entire room from tenant review' : 'Include entire room in tenant review'}
