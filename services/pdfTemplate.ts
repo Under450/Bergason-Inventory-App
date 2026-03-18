@@ -1,58 +1,449 @@
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { Inventory } from '../types';
 
 /**
- * Generates a clean, properly formatted A4 PDF from inventory data.
- * Uses a self-contained HTML template with inline styles only — no Tailwind,
- * no oklch, no external CSS — so html2canvas renders it correctly every time.
+ * Generates a professional A4 PDF using jsPDF's native drawing API.
+ * No html2canvas, no CSS, no oklch — pure vector rendering.
  */
 
-const COND_STYLE: Record<string, { bg: string; color: string }> = {
-  'Excellent':            { bg: '#16a34a', color: '#fff' },
-  'Good':                 { bg: '#dcfce7', color: '#166534' },
-  'Fair':                 { bg: '#fef9c3', color: '#854d0e' },
-  'Consistent With Age':  { bg: '#dbeafe', color: '#1e40af' },
-  'Poor':                 { bg: '#ffedd5', color: '#9a3412' },
-  'Needs Attention':      { bg: '#dc2626', color: '#fff' },
+// ── Colours ──────────────────────────────────────────────────────────────────
+const C = {
+  navy:    [15,  23,  42]  as [number,number,number],
+  gold:    [212, 175, 55]  as [number,number,number],
+  white:   [255, 255, 255] as [number,number,number],
+  black:   [30,  41,  59]  as [number,number,number],
+  gray:    [100, 116, 139] as [number,number,number],
+  lgray:   [226, 232, 240] as [number,number,number],
+  xlgray:  [248, 250, 252] as [number,number,number],
+  green:   [22,  163, 74]  as [number,number,number],
+  lgreen:  [220, 252, 231] as [number,number,number],
+  dgreen:  [22,  101, 52]  as [number,number,number],
+  yellow:  [254, 249, 195] as [number,number,number],
+  dyellow: [133, 77,  14]  as [number,number,number],
+  blue:    [219, 234, 254] as [number,number,number],
+  dblue:   [30,  64,  175] as [number,number,number],
+  orange:  [255, 237, 213] as [number,number,number],
+  dorange: [154, 52,  18]  as [number,number,number],
+  red:     [220, 38,  38]  as [number,number,number],
+  lred:    [254, 226, 226] as [number,number,number],
 };
 
-const CLEAN_STYLE: Record<string, { bg: string; color: string }> = {
-  'Professional Clean':   { bg: '#16a34a', color: '#fff' },
-  'Domestic Clean':       { bg: '#dbeafe', color: '#1e40af' },
-  'Good':                 { bg: '#dcfce7', color: '#166534' },
-  'Fair':                 { bg: '#fef9c3', color: '#854d0e' },
-  'Poor':                 { bg: '#ffedd5', color: '#9a3412' },
-  'Dirty':                { bg: '#dc2626', color: '#fff' },
+const COND_COLOR: Record<string, { bg: [number,number,number]; fg: [number,number,number] }> = {
+  'Excellent':           { bg: C.green,  fg: C.white   },
+  'Good':                { bg: C.lgreen, fg: C.dgreen  },
+  'Fair':                { bg: C.yellow, fg: C.dyellow },
+  'Consistent With Age': { bg: C.blue,   fg: C.dblue   },
+  'Poor':                { bg: C.orange, fg: C.dorange },
+  'Needs Attention':     { bg: C.red,    fg: C.white   },
+};
+const CLEAN_COLOR: Record<string, { bg: [number,number,number]; fg: [number,number,number] }> = {
+  'Professional Clean':  { bg: C.green,  fg: C.white   },
+  'Domestic Clean':      { bg: C.blue,   fg: C.dblue   },
+  'Good':                { bg: C.lgreen, fg: C.dgreen  },
+  'Fair':                { bg: C.yellow, fg: C.dyellow },
+  'Poor':                { bg: C.orange, fg: C.dorange },
+  'Dirty':               { bg: C.red,    fg: C.white   },
 };
 
-const badge = (label: string, map: Record<string, { bg: string; color: string }>) => {
-  const s = map[label] || { bg: '#e2e8f0', color: '#334155' };
-  return `<span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;background:${s.bg};color:${s.color};">${label || '—'}</span>`;
-};
+// ── PDF helpers ───────────────────────────────────────────────────────────────
+const PAGE_W = 210;
+const PAGE_H = 297;
+const MARGIN = 14;
+const CONTENT_W = PAGE_W - MARGIN * 2;
 
-const photoToBase64 = (url: string): Promise<string> =>
-  new Promise(resolve => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      c.getContext('2d')!.drawImage(img, 0, 0);
-      try { resolve(c.toDataURL('image/jpeg', 0.8)); } catch { resolve(''); }
-    };
-    img.onerror = () => resolve('');
-    img.src = url + (url.includes('?') ? '&' : '?') + '_pdf=1';
-  });
+class PDFBuilder {
+  pdf: jsPDF;
+  y: number;
+  page: number;
 
+  constructor() {
+    this.pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    this.y = MARGIN;
+    this.page = 1;
+  }
+
+  checkPage(needed = 10) {
+    if (this.y + needed > PAGE_H - MARGIN) {
+      this.pdf.addPage();
+      this.page++;
+      this.y = MARGIN;
+      return true;
+    }
+    return false;
+  }
+
+  setFont(style: 'normal'|'bold'|'italic' = 'normal', size = 10) {
+    this.pdf.setFont('helvetica', style);
+    this.pdf.setFontSize(size);
+  }
+
+  setColor(rgb: [number,number,number]) {
+    this.pdf.setTextColor(rgb[0], rgb[1], rgb[2]);
+  }
+
+  setFill(rgb: [number,number,number]) {
+    this.pdf.setFillColor(rgb[0], rgb[1], rgb[2]);
+  }
+
+  setDraw(rgb: [number,number,number]) {
+    this.pdf.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  }
+
+  rect(x: number, y: number, w: number, h: number, fill?: [number,number,number], stroke?: [number,number,number]) {
+    if (fill) this.setFill(fill);
+    if (stroke) this.setDraw(stroke); else this.pdf.setDrawColor(255,255,255);
+    const style = fill && stroke ? 'FD' : fill ? 'F' : 'D';
+    this.pdf.rect(x, y, w, h, style);
+  }
+
+  text(txt: string, x: number, y: number, opts?: { align?: 'left'|'center'|'right'; maxWidth?: number }) {
+    if (!txt) return;
+    this.pdf.text(txt, x, y, opts as any);
+  }
+
+  wrap(txt: string, x: number, maxW: number, lineH: number): number {
+    const lines = this.pdf.splitTextToSize(txt || '', maxW);
+    lines.forEach((line: string, i: number) => {
+      this.checkPage();
+      this.text(line, x, this.y + i * lineH);
+    });
+    return lines.length * lineH;
+  }
+
+  sectionTitle(title: string) {
+    this.checkPage(12);
+    this.y += 6;
+    this.rect(MARGIN, this.y, CONTENT_W, 7, C.navy);
+    this.setFont('bold', 9);
+    this.setColor(C.gold);
+    this.text(title.toUpperCase(), MARGIN + 3, this.y + 4.8);
+    this.y += 9;
+  }
+
+  badge(txt: string, x: number, y: number, w: number, colors: { bg: [number,number,number]; fg: [number,number,number] }) {
+    this.rect(x, y - 3.5, w, 5, colors.bg);
+    this.setFont('bold', 7);
+    this.setColor(colors.fg);
+    this.text(txt || '—', x + w/2, y, { align: 'center' });
+  }
+
+  hLine(col?: [number,number,number]) {
+    this.setDraw(col || C.lgray);
+    this.pdf.setLineWidth(0.2);
+    this.pdf.line(MARGIN, this.y, PAGE_W - MARGIN, this.y);
+  }
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
 export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string): Promise<Blob> => {
+  const b = new PDFBuilder();
+  const pdf = b.pdf;
 
-  // Active rooms (excluding deactivated rooms)
+  // Active rooms
   const activeRoomIds = inventory.activeRoomIds || inventory.rooms.map(r => r.id);
   const activeRooms = inventory.rooms.filter(r => activeRoomIds.includes(r.id) && !r.pdfExcluded);
 
-  // Collect all photos for the appendix (non-excluded items only)
+  // ── HEADER ─────────────────────────────────────────────────────────────────
+  // Logo
+  try {
+    const logoB64 = await loadImageAsBase64(logoUrl);
+    if (logoB64) pdf.addImage(logoB64, 'PNG', PAGE_W/2 - 15, b.y, 30, 12, undefined, 'FAST');
+  } catch { /* skip */ }
+  b.y += 15;
+
+  b.setFont('bold', 18);
+  b.setColor(C.navy);
+  b.text('INVENTORY & SCHEDULE OF CONDITION', PAGE_W/2, b.y, { align: 'center' });
+  b.y += 6;
+
+  b.setFont('normal', 11);
+  b.setColor(C.gray);
+  b.text(inventory.address, PAGE_W/2, b.y, { align: 'center' });
+  b.y += 5;
+
+  b.setFont('normal', 9);
+  const dateStr = new Date(inventory.dateCreated).toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
+  b.text(`Date: ${dateStr}   ·   Ref: ${inventory.propertyId || '—'}`, PAGE_W/2, b.y, { align: 'center' });
+  b.y += 4;
+
+  // Gold divider
+  b.setDraw(C.gold);
+  b.pdf.setLineWidth(0.8);
+  b.pdf.line(MARGIN, b.y, PAGE_W - MARGIN, b.y);
+  b.y += 8;
+
+  // ── 1. PROPERTY DETAILS ────────────────────────────────────────────────────
+  b.sectionTitle('1. Property Details');
+
+  const propRows: [string, string][] = [
+    ['Property Address',   inventory.address],
+    ['Property ID',        inventory.propertyId || '—'],
+    ['Property Type',      inventory.propertyType || '—'],
+    ['Description',        inventory.propertyDescription || '—'],
+    ['Pre-Tenancy Clean',  inventory.preTenancyClean
+      ? `Yes${inventory.preTenancyCleanDate ? ' — ' + inventory.preTenancyCleanDate : ''}${inventory.preTenancyCleanInvoiceRef ? ' (Inv: ' + inventory.preTenancyCleanInvoiceRef + ')' : ''}`
+      : 'Not recorded'],
+  ];
+
+  propRows.forEach(([label, value]) => {
+    b.checkPage(8);
+    const rowH = 6;
+    b.rect(MARGIN, b.y, 50, rowH, C.xlgray);
+    b.setFont('bold', 8);
+    b.setColor(C.gray);
+    b.text(label, MARGIN + 2, b.y + 4);
+    b.setFont('normal', 8);
+    b.setColor(C.black);
+    const lines = pdf.splitTextToSize(value, CONTENT_W - 54);
+    lines.forEach((line: string, i: number) => b.text(line, MARGIN + 53, b.y + 4 + i * 4.5));
+    b.y += Math.max(rowH, lines.length * 4.5) + 1;
+  });
+
+  // ── 2. HEALTH & SAFETY ─────────────────────────────────────────────────────
+  b.sectionTitle('2. Health & Safety Alarm Compliance Checks');
+
+  // Column headers
+  b.rect(MARGIN, b.y, CONTENT_W - 25, 6, C.xlgray);
+  b.rect(PAGE_W - MARGIN - 25, b.y, 25, 6, C.xlgray);
+  b.setFont('bold', 8);
+  b.setColor(C.gray);
+  b.text('CHECK', MARGIN + 2, b.y + 4);
+  b.text('RESULT', PAGE_W - MARGIN - 12.5, b.y + 4, { align: 'center' });
+  b.y += 7;
+
+  inventory.healthSafetyChecks.forEach((check, i) => {
+    b.checkPage(7);
+    const bg = i % 2 === 0 ? C.white : C.xlgray;
+    b.rect(MARGIN, b.y, CONTENT_W, 6.5, bg);
+
+    b.setFont('normal', 8);
+    b.setColor(C.black);
+    b.text(check.question, MARGIN + 2, b.y + 4.2);
+
+    const ans = check.answer || '—';
+    const ansColor = ans === 'YES' ? C.green : ans === 'NO' ? C.red : C.gray;
+    b.setFont('bold', 8);
+    b.setColor(ansColor);
+    b.text(ans, PAGE_W - MARGIN - 12.5, b.y + 4.2, { align: 'center' });
+    b.y += 6.5;
+  });
+
+  b.y += 3;
+
+  // ── 3. CONDITION / CLEANLINESS KEY ─────────────────────────────────────────
+  b.sectionTitle('3. Condition & Cleanliness Key');
+
+  const condEntries = Object.entries(COND_COLOR);
+  const cleanEntries = Object.entries(CLEAN_COLOR);
+  const keyColW = CONTENT_W / 2 - 3;
+
+  b.setFont('bold', 8);
+  b.setColor(C.gray);
+  b.text('CONDITION', MARGIN, b.y + 3);
+  b.text('CLEANLINESS', MARGIN + keyColW + 6, b.y + 3);
+  b.y += 5;
+
+  const maxKeys = Math.max(condEntries.length, cleanEntries.length);
+  for (let i = 0; i < maxKeys; i++) {
+    b.checkPage(6);
+    if (condEntries[i]) {
+      const [label, colors] = condEntries[i];
+      b.rect(MARGIN, b.y, 8, 4.5, colors.bg);
+      b.setFont('normal', 8);
+      b.setColor(C.black);
+      b.text(label, MARGIN + 10, b.y + 3.5);
+    }
+    if (cleanEntries[i]) {
+      const [label, colors] = cleanEntries[i];
+      b.rect(MARGIN + keyColW + 6, b.y, 8, 4.5, colors.bg);
+      b.setFont('normal', 8);
+      b.setColor(C.black);
+      b.text(label, MARGIN + keyColW + 16, b.y + 3.5);
+    }
+    b.y += 5.5;
+  }
+
+  b.y += 3;
+
+  // ── 4. ROOMS ───────────────────────────────────────────────────────────────
+  b.sectionTitle('4. Room-by-Room Schedule');
+
+  const COL = {
+    item:   { x: MARGIN,      w: 42 },
+    desc:   { x: MARGIN + 43, w: 78 },
+    cond:   { x: MARGIN + 122, w: 24 },
+    clean:  { x: MARGIN + 147, w: 24 },
+  };
+
+  let prevFloor = '';
+
+  for (const room of activeRooms) {
+    const visibleItems = room.items.filter(i => !i.excluded);
+    if (visibleItems.length === 0) continue;
+
+    const isMeter = room.name === 'Meter Cupboard';
+
+    // Floor group header
+    if (room.floorGroup && room.floorGroup !== prevFloor) {
+      b.checkPage(10);
+      b.y += 3;
+      b.rect(MARGIN, b.y, CONTENT_W, 6, [51, 65, 85]);
+      b.setFont('bold', 8);
+      b.setColor(C.white);
+      b.text(room.floorGroup.toUpperCase(), PAGE_W/2, b.y + 4.2, { align: 'center' });
+      b.y += 7;
+      prevFloor = room.floorGroup;
+    }
+
+    // Room header bar
+    b.checkPage(12);
+    b.rect(MARGIN, b.y, CONTENT_W, 7, C.navy);
+    b.setFont('bold', 10);
+    b.setColor(C.white);
+    b.text(room.name, MARGIN + 3, b.y + 4.8);
+    b.setFont('normal', 8);
+    b.setColor(C.gold);
+    b.text(`${visibleItems.length} items`, PAGE_W - MARGIN - 2, b.y + 4.8, { align: 'right' });
+    b.y += 8;
+
+    // Room meta (odour, decoration)
+    const meta = [
+      room.odourNotes    ? `Odour: ${room.odourNotes}` : '',
+      room.decorationColour ? `Decoration: ${room.decorationColour}` : '',
+      room.lastDecorated ? `Last decorated: ${room.lastDecorated}` : '',
+    ].filter(Boolean).join('   ·   ');
+    if (meta) {
+      b.checkPage(6);
+      b.rect(MARGIN, b.y, CONTENT_W, 5.5, [255, 251, 235]);
+      b.setFont('italic', 7.5);
+      b.setColor(C.dyellow);
+      b.text(meta, MARGIN + 2, b.y + 3.8);
+      b.y += 6;
+    }
+
+    // Column headers
+    b.checkPage(6);
+    b.rect(MARGIN, b.y, CONTENT_W, 5.5, C.xlgray);
+    b.setFont('bold', 7);
+    b.setColor(C.gray);
+    b.text('ITEM',                   COL.item.x + 1,  b.y + 3.8);
+    b.text('DESCRIPTION / DETAILS',  COL.desc.x + 1,  b.y + 3.8);
+    b.text(isMeter ? 'SUPPLIER' : 'CONDITION',  COL.cond.x + COL.cond.w/2, b.y + 3.8, { align: 'center' });
+    b.text(isMeter ? 'TYPE' : 'CLEANLINESS', COL.clean.x + COL.clean.w/2, b.y + 3.8, { align: 'center' });
+    b.y += 6;
+
+    // Items
+    visibleItems.forEach((item, idx) => {
+      // Estimate row height
+      const descLines = pdf.splitTextToSize(
+        [item.description, item.make ? `Make: ${item.make}${item.model ? '/' + item.model : ''}` : '', item.serialNumber ? `Serial: ${item.serialNumber}` : ''].filter(Boolean).join('\n'),
+        COL.desc.w - 2
+      );
+      const rowH = Math.max(7, descLines.length * 4 + 3);
+      b.checkPage(rowH + 2);
+
+      const bg = idx % 2 === 0 ? C.white : C.xlgray;
+      b.rect(MARGIN, b.y, CONTENT_W, rowH, bg);
+
+      // Item name
+      b.setFont('bold', 8);
+      b.setColor(C.black);
+      const nameLines = pdf.splitTextToSize(item.name, COL.item.w - 2);
+      nameLines.forEach((l: string, li: number) => b.text(l, COL.item.x + 1, b.y + 4 + li * 4));
+
+      // Description
+      b.setFont('normal', 7.5);
+      b.setColor(C.black);
+      if (item.description) {
+        const dLines = pdf.splitTextToSize(item.description, COL.desc.w - 2);
+        dLines.forEach((l: string, li: number) => b.text(l, COL.desc.x + 1, b.y + 4 + li * 4));
+      }
+      // Sub-details
+      let subY = b.y + 4 + (item.description ? pdf.splitTextToSize(item.description, COL.desc.w - 2).length * 4 : 0);
+      b.setFont('normal', 6.5);
+      b.setColor(C.gray);
+      if (item.make)         { b.text(`Make: ${item.make}${item.model ? ' / ' + item.model : ''}`, COL.desc.x + 1, subY); subY += 3.5; }
+      if (item.serialNumber) { b.text(`Serial: ${item.serialNumber}`, COL.desc.x + 1, subY); subY += 3.5; }
+      if (item.accountNumber){ b.text(`Account: ${item.accountNumber}`, COL.desc.x + 1, subY); subY += 3.5; }
+      if (item.qualityTier)  { b.text(`Quality: ${item.qualityTier}`, COL.desc.x + 1, subY); subY += 3.5; }
+      if (item.installedDate){ b.text(`Installed: ${item.installedDate}`, COL.desc.x + 1, subY); subY += 3.5; }
+
+      // Condition badge
+      if (!isMeter && item.condition) {
+        const cc = COND_COLOR[item.condition] || { bg: C.lgray, fg: C.black };
+        b.badge(item.condition, COL.cond.x + 1, b.y + rowH/2 + 1, COL.cond.w - 2, cc);
+      } else if (isMeter && item.supplier) {
+        b.setFont('normal', 7.5);
+        b.setColor(C.black);
+        b.text(item.supplier, COL.cond.x + COL.cond.w/2, b.y + rowH/2 + 1, { align: 'center' });
+      }
+
+      // Cleanliness badge
+      if (!isMeter && item.cleanliness) {
+        const cc = CLEAN_COLOR[item.cleanliness] || { bg: C.lgray, fg: C.black };
+        b.badge(item.cleanliness, COL.clean.x + 1, b.y + rowH/2 + 1, COL.clean.w - 2, cc);
+      } else if (isMeter && item.meterType) {
+        b.setFont('normal', 7.5);
+        b.setColor(C.black);
+        b.text(item.meterType, COL.clean.x + COL.clean.w/2, b.y + rowH/2 + 1, { align: 'center' });
+      }
+
+      // Row border
+      b.hLine(C.lgray);
+      b.y += rowH;
+    });
+
+    b.y += 4;
+  }
+
+  // ── 5. DOCUMENTS ───────────────────────────────────────────────────────────
+  const uploadedDocs = inventory.documents.filter(d => d.fileData || d.uploadDate);
+  if (uploadedDocs.length > 0) {
+    b.sectionTitle('5. Documents');
+    uploadedDocs.forEach((doc, i) => {
+      b.checkPage(8);
+      const bg = i % 2 === 0 ? C.white : C.xlgray;
+      b.rect(MARGIN, b.y, CONTENT_W, 7, bg);
+      b.setFont('bold', 8.5);
+      b.setColor(C.navy);
+      b.text(doc.name, MARGIN + 3, b.y + 4.5);
+      if (doc.uploadDate) {
+        b.setFont('normal', 7.5);
+        b.setColor(C.gray);
+        const uploaded = new Date(doc.uploadDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+        b.text(`Uploaded: ${uploaded}`, PAGE_W - MARGIN - 2, b.y + 4.5, { align: 'right' });
+      }
+      b.setFont('bold', 7);
+      b.setColor(doc.fileData ? C.green : C.gray);
+      b.text(doc.fileData ? '✓ Attached' : '— Not uploaded', MARGIN + CONTENT_W - 40, b.y + 4.5, { align: 'right' });
+      b.y += 8;
+    });
+    b.y += 3;
+  }
+
+  // ── 6. SIGNATURES ──────────────────────────────────────────────────────────
+  if (inventory.signatures.length > 0) {
+    b.sectionTitle(`${uploadedDocs.length > 0 ? '6' : '5'}. Signatures`);
+    for (const sig of inventory.signatures) {
+      b.checkPage(22);
+      b.setFont('bold', 9);
+      b.setColor(C.navy);
+      b.text(`${sig.type}${sig.name ? ' — ' + sig.name : ''}`, MARGIN, b.y + 4);
+      if (sig.date) {
+        b.setFont('normal', 7.5);
+        b.setColor(C.gray);
+        b.text(new Date(sig.date).toLocaleString('en-GB'), MARGIN, b.y + 8.5);
+      }
+      if (sig.data) {
+        try {
+          pdf.addImage(sig.data, 'PNG', MARGIN, b.y + 10, 60, 15, undefined, 'FAST');
+        } catch { /* skip */ }
+      }
+      b.y += 28;
+    }
+  }
+
+  // ── PHOTO APPENDIX ─────────────────────────────────────────────────────────
   const photoItems: { roomName: string; itemName: string; url: string; idx: number }[] = [];
   let photoIdx = 1;
   for (const room of activeRooms) {
@@ -61,281 +452,83 @@ export const generateInventoryPDF = async (inventory: Inventory, logoUrl: string
       for (const p of item.photos) {
         try {
           const parsed = JSON.parse(p);
-          if (parsed?.url) {
-            photoItems.push({ roomName: room.name, itemName: item.name, url: parsed.url, idx: photoIdx++ });
-          }
+          if (parsed?.url) photoItems.push({ roomName: room.name, itemName: item.name, url: parsed.url, idx: photoIdx++ });
         } catch { /* skip */ }
       }
     }
   }
 
-  // Pre-load logo and all photos as base64
-  const logoB64 = await photoToBase64(logoUrl);
-  const photoB64Map: Record<string, string> = {};
-  await Promise.all(photoItems.map(async p => {
-    photoB64Map[p.url] = await photoToBase64(p.url);
-  }));
+  if (photoItems.length > 0) {
+    b.sectionTitle('Appendix: Photo Schedule');
 
-  // Build room photo maps for inline thumbnails
-  const roomPhotoMap: Record<string, Record<string, string[]>> = {};
-  for (const room of activeRooms) {
-    roomPhotoMap[room.id] = {};
-    for (const item of room.items) {
-      if (item.excluded) continue;
-      const urls: string[] = [];
-      for (const p of item.photos) {
-        try {
-          const parsed = JSON.parse(p);
-          if (parsed?.url && photoB64Map[parsed.url]) urls.push(photoB64Map[parsed.url]);
-        } catch { /* skip */ }
+    const PHOTO_W = 58;
+    const PHOTO_H = 42;
+    const COLS = 3;
+    const GAP = 3;
+
+    let col = 0;
+    let rowStartY = b.y;
+
+    for (const p of photoItems) {
+      if (col === 0) {
+        b.checkPage(PHOTO_H + 14);
+        rowStartY = b.y;
       }
-      roomPhotoMap[room.id][item.id] = urls;
+      const px = MARGIN + col * (PHOTO_W + GAP);
+
+      try {
+        const imgB64 = await loadImageAsBase64(p.url);
+        if (imgB64) pdf.addImage(imgB64, 'JPEG', px, rowStartY, PHOTO_W, PHOTO_H, undefined, 'FAST');
+      } catch { /* skip */ }
+
+      b.rect(px, rowStartY + PHOTO_H, PHOTO_W, 5, C.navy);
+      b.setFont('bold', 6.5);
+      b.setColor(C.white);
+      b.text(`#${p.idx} · ${p.roomName}`, px + PHOTO_W/2, rowStartY + PHOTO_H + 3.5, { align: 'center' });
+
+      b.setFont('normal', 6.5);
+      b.setColor(C.gray);
+      b.text(p.itemName, px + PHOTO_W/2, rowStartY + PHOTO_H + 8, { align: 'center' });
+
+      col++;
+      if (col >= COLS) {
+        col = 0;
+        b.y = rowStartY + PHOTO_H + 12;
+      }
     }
+    if (col > 0) b.y = rowStartY + PHOTO_H + 12;
   }
 
-  // ── Build HTML ──────────────────────────────────────────────────────────────
-
-  const S = {
-    page: 'font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1e293b;background:#fff;width:794px;padding:48px 48px 40px;box-sizing:border-box;',
-    header: 'text-align:center;border-bottom:3px double #d4af37;padding-bottom:20px;margin-bottom:28px;',
-    sectionTitle: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#d4af37;border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin:24px 0 12px;',
-    table: 'width:100%;border-collapse:collapse;font-size:11px;',
-    td: 'padding:7px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;',
-    tdLabel: 'padding:7px 8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#64748b;width:35%;vertical-align:top;',
-    roomHeader: 'background:#0f172a;color:#fff;padding:8px 14px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-top:20px;',
-    floorHeader: 'background:#334155;color:#e2e8f0;padding:5px 14px;font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-top:28px;',
-    itemRow: 'display:grid;grid-template-columns:180px 1fr 90px 90px;gap:8px;padding:8px 10px;border-bottom:1px solid #f1f5f9;align-items:start;font-size:11px;',
-    itemHeader: 'display:grid;grid-template-columns:180px 1fr 90px 90px;gap:8px;padding:6px 10px;background:#f8fafc;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;',
-    photosRow: 'padding:4px 10px 10px;display:flex;gap:6px;flex-wrap:wrap;background:#fafafa;border-bottom:1px solid #f1f5f9;',
-  };
-
-  const rows = (pairs: [string, string][]) => pairs
-    .filter(([, v]) => v && v !== '—')
-    .map(([k, v]) => `<tr><td style="${S.tdLabel}">${k}</td><td style="${S.td}">${v}</td></tr>`)
-    .join('');
-
-  const roomSections = activeRooms.map(room => {
-    const visibleItems = room.items.filter(i => !i.excluded);
-    if (visibleItems.length === 0) return '';
-
-    const isMeter = room.name === 'Meter Cupboard';
-
-    const itemRows = visibleItems.map(item => {
-      const thumbs = (roomPhotoMap[room.id]?.[item.id] || [])
-        .map(b64 => `<img src="${b64}" style="width:52px;height:52px;object-fit:cover;border-radius:3px;border:1px solid #e2e8f0;" />`)
-        .join('');
-
-      const desc = [
-        item.description ? `<div style="color:#475569;">${item.description}</div>` : '',
-        item.make ? `<div style="color:#94a3b8;font-size:10px;">Make: ${item.make}${item.model ? ` / ${item.model}` : ''}</div>` : '',
-        item.serialNumber ? `<div style="color:#94a3b8;font-size:10px;">Serial: ${item.serialNumber}</div>` : '',
-        item.accountNumber ? `<div style="color:#94a3b8;font-size:10px;">Account: ${item.accountNumber}</div>` : '',
-        item.qualityTier ? `<div style="color:#94a3b8;font-size:10px;">Quality: ${item.qualityTier}</div>` : '',
-        item.installedDate ? `<div style="color:#94a3b8;font-size:10px;">Installed: ${item.installedDate}</div>` : '',
-      ].join('');
-
-      const condCol = isMeter
-        ? (item.supplier ? `<div style="font-size:10px;color:#475569;">${item.supplier}</div>` : '<span style="color:#cbd5e1;">—</span>')
-        : badge(item.condition, COND_STYLE);
-      const cleanCol = isMeter
-        ? (item.meterType ? `<div style="font-size:10px;color:#475569;">${item.meterType}</div>` : '<span style="color:#cbd5e1;">—</span>')
-        : badge(item.cleanliness, CLEAN_STYLE);
-
-      return `
-        <div style="${S.itemRow}">
-          <div style="font-weight:700;color:#1e293b;">${item.name}</div>
-          <div>${desc || '<span style="color:#cbd5e1;">—</span>'}</div>
-          <div>${condCol}</div>
-          <div>${cleanCol}</div>
-        </div>
-        ${thumbs ? `<div style="${S.photosRow}">${thumbs}</div>` : ''}
-      `;
-    }).join('');
-
-    const roomMeta = [
-      room.odourNotes ? `<span><b>Odour:</b> ${room.odourNotes}</span>` : '',
-      room.decorationColour ? `<span><b>Decoration:</b> ${room.decorationColour}</span>` : '',
-      room.lastDecorated ? `<span><b>Last decorated:</b> ${room.lastDecorated}</span>` : '',
-    ].filter(Boolean).join(' &nbsp;·&nbsp; ');
-
-    return `
-      <div style="${S.roomHeader}">${room.name} <span style="font-size:10px;font-weight:400;opacity:0.7;">(${visibleItems.length} items)</span></div>
-      ${roomMeta ? `<div style="padding:5px 10px;background:#fffbeb;font-size:10px;color:#854d0e;border-bottom:1px solid #fde68a;">${roomMeta}</div>` : ''}
-      <div style="${S.itemHeader}">
-        <div>Item</div><div>Description / Details</div><div>${isMeter ? 'Supplier' : 'Condition'}</div><div>${isMeter ? 'Type' : 'Cleanliness'}</div>
-      </div>
-      ${itemRows}
-    `;
-  }).join('');
-
-  // HS checks table
-  const hsRows = inventory.healthSafetyChecks.map(c => {
-    const ans = c.answer || '—';
-    const ansColor = ans === 'YES' ? '#16a34a' : ans === 'NO' ? '#dc2626' : '#64748b';
-    return `<tr>
-      <td style="${S.td}">${c.question}</td>
-      <td style="${S.td};text-align:center;font-weight:700;color:${ansColor};">${ans}</td>
-    </tr>`;
-  }).join('');
-
-  // Photo appendix
-  const appendixPhotos = photoItems.map(p => {
-    const b64 = photoB64Map[p.url];
-    if (!b64) return '';
-    return `
-      <div style="break-inside:avoid;margin-bottom:12px;width:180px;">
-        <img src="${b64}" style="width:180px;height:130px;object-fit:cover;border-radius:4px;border:1px solid #e2e8f0;display:block;" />
-        <div style="background:#0f172a;color:#fff;font-size:9px;font-weight:700;padding:3px 6px;border-radius:0 0 4px 4px;">
-          #${p.idx} · ${p.roomName}
-        </div>
-        <div style="font-size:9px;color:#64748b;padding:2px 0;">${p.itemName}</div>
-      </div>
-    `;
-  }).join('');
-
-  const sigRows = inventory.signatures.map(sig => `
-    <tr>
-      <td style="${S.tdLabel}">${sig.type}${sig.name ? ` — ${sig.name}` : ''}</td>
-      <td style="${S.td}">
-        ${sig.data ? `<img src="${sig.data}" style="max-width:200px;height:60px;object-fit:contain;" />` : '<span style="color:#94a3b8;">Not signed</span>'}
-        <div style="font-size:10px;color:#94a3b8;margin-top:2px;">${sig.date ? new Date(sig.date).toLocaleString('en-GB') : ''}</div>
-      </td>
-    </tr>
-  `).join('');
-
-  const html = `
-    <div style="${S.page}">
-
-      <!-- HEADER -->
-      <div style="${S.header}">
-        ${logoB64 ? `<img src="${logoB64}" style="width:90px;height:auto;margin:0 auto 12px;display:block;" />` : ''}
-        <div style="font-size:20px;font-weight:700;text-transform:uppercase;letter-spacing:3px;color:#0f172a;margin-bottom:4px;">
-          Inventory &amp; Schedule of Condition
-        </div>
-        <div style="font-size:13px;color:#64748b;">${inventory.address}</div>
-        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
-          Date: ${new Date(inventory.dateCreated).toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' })}
-          &nbsp;·&nbsp; Ref: ${inventory.propertyId || '—'}
-        </div>
-      </div>
-
-      <!-- PROPERTY DETAILS -->
-      <div style="${S.sectionTitle}">1. Property Details</div>
-      <table style="${S.table}">
-        <tbody>
-          ${rows([
-            ['Property Address', inventory.address],
-            ['Property ID', inventory.propertyId || '—'],
-            ['Property Type', inventory.propertyType || '—'],
-            ['Property Description', inventory.propertyDescription || '—'],
-            ['Pre-Tenancy Clean', inventory.preTenancyClean ? `Yes${inventory.preTenancyCleanDate ? ` — ${inventory.preTenancyCleanDate}` : ''}${inventory.preTenancyCleanInvoiceRef ? ` (Inv: ${inventory.preTenancyCleanInvoiceRef})` : ''}` : 'Not recorded'],
-          ])}
-        </tbody>
-      </table>
-
-      <!-- HEALTH & SAFETY -->
-      <div style="${S.sectionTitle}">2. Health &amp; Safety Alarm Compliance Checks</div>
-      <table style="${S.table}">
-        <thead>
-          <tr style="background:#f8fafc;">
-            <th style="padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;border-bottom:1px solid #e2e8f0;">Check</th>
-            <th style="padding:7px 8px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;border-bottom:1px solid #e2e8f0;width:80px;">Result</th>
-          </tr>
-        </thead>
-        <tbody>${hsRows}</tbody>
-      </table>
-
-      <!-- CONDITION / CLEANLINESS KEY -->
-      <div style="${S.sectionTitle}">3. Condition &amp; Cleanliness Key</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:8px;">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Condition</div>
-          ${Object.entries(COND_STYLE).map(([label, s]) =>
-            `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">
-              <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${s.bg};flex-shrink:0;"></span>
-              <span>${label}</span>
-            </div>`).join('')}
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Cleanliness</div>
-          ${Object.entries(CLEAN_STYLE).map(([label, s]) =>
-            `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px;">
-              <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${s.bg};flex-shrink:0;"></span>
-              <span>${label}</span>
-            </div>`).join('')}
-        </div>
-      </div>
-
-      <!-- ROOMS -->
-      <div style="${S.sectionTitle}">4. Room-by-Room Schedule</div>
-      ${roomSections}
-
-      <!-- SIGNATURES -->
-      ${inventory.signatures.length > 0 ? `
-        <div style="${S.sectionTitle}">5. Signatures</div>
-        <table style="${S.table}"><tbody>${sigRows}</tbody></table>
-      ` : ''}
-
-      <!-- PHOTO APPENDIX -->
-      ${photoItems.length > 0 ? `
-        <div style="${S.sectionTitle}">Appendix: Photo Schedule</div>
-        <div style="display:flex;flex-wrap:wrap;gap:12px;">
-          ${appendixPhotos}
-        </div>
-      ` : ''}
-
-      <!-- FOOTER -->
-      <div style="margin-top:40px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8;">
-        Bergason Property Services &nbsp;·&nbsp; inventory@bergason.co.uk &nbsp;·&nbsp;
-        Generated ${new Date().toLocaleString('en-GB', { day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })}
-      </div>
-
-    </div>
-  `;
-
-  // ── Render to canvas ────────────────────────────────────────────────────────
-  // Use an iframe with srcdoc so the template is COMPLETELY isolated from the
-  // parent page's Tailwind stylesheet (which uses oklch). html2canvas never sees oklch.
-  const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;top:0;left:-10000px;width:850px;height:2px;border:none;visibility:hidden;';
-  document.body.appendChild(iframe);
-
-  const iframeDoc = iframe.contentDocument!;
-  iframeDoc.open();
-  iframeDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}</style></head><body>' + html + '</body></html>');
-  iframeDoc.close();
-
-  // Expand iframe to full content height
-  await new Promise(r => setTimeout(r, 400));
-  const contentEl = iframeDoc.body.firstElementChild as HTMLElement;
-  iframe.style.height = contentEl.scrollHeight + 'px';
-  await new Promise(r => setTimeout(r, 200));
-
-  try {
-    const canvas = await html2canvas(contentEl, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      imageTimeout: 30000,
-      windowWidth: 850,
-    });
-
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const imgH = (canvas.height / canvas.width) * pageW;
-    const pages = Math.ceil(imgH / pageH);
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-
-    for (let page = 0; page < pages; page++) {
-      if (page > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, -(page * pageH), pageW, imgH);
-    }
-
-    return pdf.output('blob');
-  } finally {
-    document.body.removeChild(iframe);
+  // ── FOOTER on every page ───────────────────────────────────────────────────
+  const totalPages = pdf.getNumberOfPages();
+  for (let pg = 1; pg <= totalPages; pg++) {
+    pdf.setPage(pg);
+    pdf.setDrawColor(C.lgray[0], C.lgray[1], C.lgray[2]);
+    pdf.setLineWidth(0.2);
+    pdf.line(MARGIN, PAGE_H - 10, PAGE_W - MARGIN, PAGE_H - 10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7);
+    pdf.setTextColor(C.gray[0], C.gray[1], C.gray[2]);
+    pdf.text('Bergason Property Services  ·  inventory@bergason.co.uk', MARGIN, PAGE_H - 6);
+    pdf.text(`Page ${pg} of ${totalPages}`, PAGE_W - MARGIN, PAGE_H - 6, { align: 'right' });
   }
+
+  return pdf.output('blob');
 };
+
+// ── Image loader ───────────────────────────────────────────────────────────────
+const loadImageAsBase64 = (url: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      c.getContext('2d')!.drawImage(img, 0, 0);
+      try { resolve(c.toDataURL('image/jpeg', 0.85)); }
+      catch { reject(new Error('Canvas tainted')); }
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = url.includes('?') ? url + '&_pdf=1' : url + '?_pdf=1';
+  });
