@@ -118,11 +118,45 @@ export const saveDraftToFirestore = async (inventory: Inventory): Promise<void> 
   });
 };
 
-/** Load all draft inventories from Firestore */
+/** Load all draft inventories from Firestore (drafts collection) */
 export const loadDraftsFromFirestore = async (): Promise<Inventory[]> => {
   const q = query(collection(db, DRAFTS_COLLECTION), orderBy('updatedAt', 'desc'));
   const snap = await getDocs(q);
   return snap.docs.map(d => (d.data() as { inventory: Inventory }).inventory);
+};
+
+/** Load ALL inventories for the office portal — merges drafts + sent inventories */
+export const loadAllInventoriesForPortal = async (): Promise<Inventory[]> => {
+  const results: Inventory[] = [];
+  const seen = new Set<string>();
+
+  // 1. Load from drafts collection (inventories saved from any device)
+  try {
+    const q = query(collection(db, DRAFTS_COLLECTION), orderBy('updatedAt', 'desc'));
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      const inv = (d.data() as { inventory: Inventory }).inventory;
+      if (inv?.id && !seen.has(inv.id)) {
+        results.push(inv);
+        seen.add(inv.id);
+      }
+    }
+  } catch { /* ignore — collection may not exist yet */ }
+
+  // 2. Load from inventories collection (inventories that were sent/signed)
+  try {
+    const snap = await getDocs(collection(db, 'inventories'));
+    for (const d of snap.docs) {
+      const data = d.data();
+      const inv = data.inventory as Inventory;
+      if (inv?.id && !seen.has(inv.id)) {
+        results.push(inv);
+        seen.add(inv.id);
+      }
+    }
+  } catch { /* ignore */ }
+
+  return results.sort((a, b) => (b.dateUpdated || 0) - (a.dateUpdated || 0));
 };
 
 /** Delete a draft from Firestore */
