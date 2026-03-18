@@ -1742,7 +1742,11 @@ const InventoryEditor = () => {
                               pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
                               await updateTenantProgress(token, { originalPdfUrl: pdfUrl });
                             } catch (pdfErr) {
-                              console.warn('PDF generation/upload failed:', pdfErr);
+                              console.error('PDF generation/upload failed:', pdfErr);
+                              setSendStatus('');
+                              setSending(false);
+                              alert(`PDF generation failed — the email was not sent.\n\nError: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}\n\nThis is usually caused by a CORS issue with property photos. Try again, or check the browser console for details.`);
+                              return;
                             }
 
                             setSendStatus('Sending confirmation email...');
