@@ -4,5 +4,11 @@ service cloud.firestore {
     match /inventories/{token} {
       allow read, write: if true;
     }
+    match /dispatches/{ref} {
+      allow read, write: if true;
+    }
+    match /drafts/{id} {
+      allow read, write: if true;
+    }
   }
 }
