@@ -564,6 +564,17 @@ const InventoryEditor = () => {
     updateInventory({ rooms });
   };
 
+  const toggleFloorGroupExcluded = (floorGroup: string) => {
+    if (!inventory) return;
+    // If any room in the group is NOT excluded, exclude all; otherwise include all
+    const groupRooms = inventory.rooms.filter(r => r.floorGroup === floorGroup);
+    const anyVisible = groupRooms.some(r => !r.pdfExcluded);
+    const rooms = inventory.rooms.map(r =>
+      r.floorGroup === floorGroup ? { ...r, pdfExcluded: anyVisible } : r
+    );
+    updateInventory({ rooms });
+  };
+
   const addPhoto = async (roomId: string, itemId: string, file: File) => {
     if (!inventory) return;
     setUploadingItems(prev => new Set(prev).add(itemId));
@@ -939,8 +950,26 @@ const InventoryEditor = () => {
             return (
               <div key={room.id} className="break-inside-avoid">
                 {showHeader && (
-                  <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest text-center mb-6 mt-8 print:mt-4">
-                    {room.floorGroup}
+                  <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest mb-6 mt-8 print:mt-4 flex items-center justify-between px-4">
+                    <span>{room.floorGroup}</span>
+                    {!isPreviewMode && (
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleFloorGroupExcluded(room.floorGroup!); }}
+                        title={inventory.rooms.filter(r => r.floorGroup === room.floorGroup).some(r => !r.pdfExcluded)
+                          ? 'Exclude all rooms in this floor from PDF'
+                          : 'Include all rooms in this floor in PDF'}
+                        className={`text-sm px-2.5 py-1 rounded transition-colors border-2 font-bold ${
+                          inventory.rooms.filter(r => r.floorGroup === room.floorGroup).some(r => !r.pdfExcluded)
+                            ? 'text-white border-white/40 hover:bg-white/20'
+                            : 'text-white/40 border-white/20 hover:text-white hover:border-white/40'
+                        }`}
+                      >
+                        <i className={`fas ${
+                          inventory.rooms.filter(r => r.floorGroup === room.floorGroup).some(r => !r.pdfExcluded)
+                            ? 'fa-eye' : 'fa-eye-slash'
+                        }`}></i>
+                      </button>
+                    )}
                   </h2>
                 )}
 
@@ -961,7 +990,7 @@ const InventoryEditor = () => {
                     <div className="flex items-center gap-2">
                       {!isPreviewMode && (
                         <>
-                          {/* Main eye — excludes entire room from PDF (header + all content) */}
+                          {/* Single eye — toggles room excluded from PDF */}
                           <button
                             onClick={e => { e.stopPropagation(); toggleRoomPdfExcluded(room.id); }}
                             title={room.pdfExcluded ? 'Include this room in PDF' : 'Exclude entire room from PDF'}
@@ -972,19 +1001,6 @@ const InventoryEditor = () => {
                             }`}
                           >
                             <i className={`fas ${room.pdfExcluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                          </button>
-                          {/* Room eye — excludes from tenant review */}
-                          <button
-                            onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
-                            title={isRoomActive ? 'Exclude entire room from tenant review' : 'Include entire room in tenant review'}
-                            className={`text-xs px-2 py-1 rounded transition-colors border ${
-                              isRoomActive
-                                ? 'text-slate-400 hover:text-red-400 border-slate-200 hover:border-red-200'
-                                : 'text-slate-300 hover:text-green-500 border-slate-100 hover:border-green-200'
-                            }`}
-                          >
-                            <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-                            <span className="ml-1 text-[10px] font-bold uppercase tracking-wide">Room</span>
                           </button>
                         </>
                       )}
@@ -1306,43 +1322,34 @@ const InventoryEditor = () => {
           </h3>
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
             {inventory.documents.map(doc => (
-              <div key={doc.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 flex items-center justify-center rounded ${doc.fileData ? 'bg-red-100 text-red-500' : 'bg-slate-100 text-slate-400'}`}>
-                    <i className="far fa-file-pdf"></i>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm text-slate-800">{doc.name}</div>
-                    {doc.uploadDate && <div className="text-[10px] text-slate-400">Uploaded {formatDate(doc.uploadDate)}</div>}
-                  </div>
+              <div key={doc.id} className="flex items-center justify-between py-1.5 px-2 bg-white border border-slate-100 rounded">
+                <div className="flex items-center gap-2 min-w-0">
+                  <i className={`far fa-file-pdf text-xs flex-shrink-0 ${doc.fileData ? 'text-red-400' : 'text-slate-300'}`}></i>
+                  <span className="text-xs text-slate-700 truncate">{doc.name}</span>
                 </div>
-                <div>
+                <div className="flex gap-1 flex-shrink-0 ml-2">
                   {doc.fileData ? (
-                    <div className="flex gap-2">
+                    <>
                       <button
                         onClick={() => window.open(doc.fileData!, '_blank')}
-                        className="text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded font-medium text-blue-600"
-                      >
-                        View
-                      </button>
+                        className="text-[10px] bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded font-medium text-blue-600"
+                      >View</button>
                       <a
                         href={doc.fileData}
                         download={doc.name}
-                        className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded font-medium text-slate-600"
-                      >
-                        Download
-                      </a>
+                        className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded font-medium text-slate-500"
+                      >Save</a>
                       {!isReadOnly && (
-                        <label className="cursor-pointer text-xs bg-white border border-slate-200 hover:border-bergason-gold hover:text-bergason-gold px-3 py-1 rounded font-medium text-slate-400">
+                        <label className="cursor-pointer text-[10px] bg-white border border-slate-200 hover:border-bergason-gold hover:text-bergason-gold px-2 py-0.5 rounded font-medium text-slate-400">
                           Replace
                           <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
                         </label>
                       )}
-                    </div>
+                    </>
                   ) : (
                     !isReadOnly && (
-                      <label className="cursor-pointer text-xs bg-bergason-navy text-white hover:bg-slate-800 px-3 py-1.5 rounded font-bold shadow-sm">
-                        <i className="fas fa-upload mr-1"></i> Upload
+                      <label className="cursor-pointer text-[10px] bg-bergason-navy text-white hover:bg-slate-800 px-2 py-0.5 rounded font-bold">
+                        <i className="fas fa-upload mr-1"></i>Upload
                         <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
                       </label>
                     )
@@ -1682,7 +1689,6 @@ const InventoryEditor = () => {
                   </Button>
                 </div>
               ) : (
-                inventory.declarationAgreed && (
                   <div className="text-center">
                     <Button
                       onClick={() => {
@@ -1695,7 +1701,6 @@ const InventoryEditor = () => {
                       <i className="fas fa-lock mr-2"></i> Lock Inventory
                     </Button>
                   </div>
-                )
               )}
             </div>
           )}
