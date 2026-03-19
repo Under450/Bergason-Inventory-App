@@ -265,12 +265,63 @@ const Dashboard = () => {
                           </>
                         )}
                       </div>
-                      {/* Status badge */}
-                      {(inv as any).signatureStatus === 'signed' ? (
-                        <span className="mt-1.5 inline-block text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">✓ Completed</span>
-                      ) : inv.status === 'LOCKED' ? (
-                        <span className="mt-1.5 inline-block text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Locked</span>
-                      ) : null}
+                      {/* Status pipeline bar */}
+                      {(() => {
+                        const ts = getTokenState(inv.id);
+                        const isComplete = (inv as any).signatureStatus === 'signed' || (inv as any).status === 'completed';
+                        const reviewSent = !!(ts?.reviewSentLink);
+                        const signed = !!(ts?.signToken);
+                        const locked = inv.status === 'LOCKED';
+                        const draft = !locked && !signed && !reviewSent && !isComplete;
+
+                        // Step index: 0=Draft 1=Ready 2=Signed 3=Review sent 4=Complete
+                        const step = isComplete ? 4 : reviewSent ? 3 : signed ? 2 : locked ? 1 : 0;
+
+                        const steps = [
+                          { label: 'Draft',   icon: 'fa-pencil-alt' },
+                          { label: 'Ready',   icon: 'fa-lock' },
+                          { label: 'Signed',  icon: 'fa-pen-nib' },
+                          { label: 'Review',  icon: 'fa-paper-plane' },
+                          { label: 'Done',    icon: 'fa-check' },
+                        ];
+
+                        const colours = [
+                          'bg-slate-300',   // past/done steps
+                          'bg-bergason-gold', // active step
+                          'bg-slate-100',   // future steps
+                        ];
+
+                        return (
+                          <div className="mt-2 flex items-center gap-0">
+                            {steps.map((s, i) => {
+                              const done = i < step;
+                              const active = i === step;
+                              const future = i > step;
+                              return (
+                                <div key={i} className="flex items-center" style={{ flex: i < 4 ? 1 : 'none' }}>
+                                  <div className="flex flex-col items-center gap-0.5" style={{ minWidth: 32 }}>
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold transition-colors ${
+                                      done ? 'bg-bergason-navy text-white' :
+                                      active ? 'bg-bergason-gold text-bergason-navy' :
+                                      'bg-slate-100 text-slate-300'
+                                    }`}>
+                                      <i className={`fas ${done ? 'fa-check' : s.icon}`}></i>
+                                    </div>
+                                    <span className={`text-[8px] font-bold uppercase tracking-wide ${
+                                      done ? 'text-bergason-navy' : active ? 'text-bergason-gold' : 'text-slate-300'
+                                    }`}>{s.label}</span>
+                                  </div>
+                                  {i < 4 && (
+                                    <div className={`flex-1 h-0.5 mb-4 mx-0.5 transition-colors ${
+                                      i < step ? 'bg-bergason-navy' : 'bg-slate-100'
+                                    }`} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <i className="fas fa-chevron-right text-slate-200 group-hover:text-bergason-gold shrink-0"></i>
                   </div>
