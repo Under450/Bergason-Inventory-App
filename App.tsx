@@ -301,19 +301,19 @@ const Dashboard = () => {
                                 <div key={i} className="flex items-center" style={{ flex: i < 4 ? 1 : 'none' }}>
                                   <div className="flex flex-col items-center gap-0.5" style={{ minWidth: 32 }}>
                                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold transition-colors ${
-                                      done ? 'bg-bergason-navy text-white' :
+                                      done ? 'bg-blue-500 text-white' :
                                       active ? 'bg-bergason-gold text-bergason-navy' :
                                       'bg-slate-100 text-slate-300'
                                     }`}>
                                       <i className={`fas ${done ? 'fa-check' : s.icon}`}></i>
                                     </div>
                                     <span className={`text-[8px] font-bold uppercase tracking-wide ${
-                                      done ? 'text-bergason-navy' : active ? 'text-bergason-gold' : 'text-slate-300'
+                                      done ? 'text-blue-500' : active ? 'text-bergason-gold' : 'text-slate-300'
                                     }`}>{s.label}</span>
                                   </div>
                                   {i < 4 && (
                                     <div className={`flex-1 h-0.5 mb-4 mx-0.5 transition-colors ${
-                                      i < step ? 'bg-bergason-navy' : 'bg-slate-100'
+                                      i < step ? 'bg-blue-400' : 'bg-slate-100'
                                     }`} />
                                   )}
                                 </div>
