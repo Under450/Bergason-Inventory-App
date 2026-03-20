@@ -203,8 +203,15 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       <header className="bg-bergason-navy text-white pt-8 pb-12 px-6 shadow-xl rounded-b-[2.5rem]">
-        <div className="flex justify-center mb-6">
-          <BergasonLogo />
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => navigate('/')}
+            className="text-slate-400 hover:text-white text-sm flex items-center gap-1 transition-colors"
+          >
+            <i className="fas fa-arrow-left text-xs"></i> Portal
+          </button>
+          <BergasonLogo className="w-20" />
+          <div className="w-16" />
         </div>
         <div className="text-center mb-6">
           <h2 className="text-blue-100 font-light text-sm uppercase tracking-widest">
@@ -218,7 +225,6 @@ const Dashboard = () => {
           >
             <i className="fas fa-plus mr-2"></i> New Inventory
           </Button>
-
         </div>
       </header>
 
@@ -500,6 +506,15 @@ const InventoryEditor = () => {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
+
+  // Debounced Firestore autosave — syncs draft every 5 seconds after a change
+  useEffect(() => {
+    if (!inventory) return;
+    const timer = setTimeout(() => {
+      import('./services/inventory').then(m => m.saveDraftToFirestore(inventory)).catch(() => {});
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [inventory]);
 
   useEffect(() => {
     if (id) {

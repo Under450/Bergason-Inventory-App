@@ -8,8 +8,6 @@ import {
   DEFAULT_DESCRIPTIONS,
 } from '../constants';
 
-// Note: onRoomComplete from the spec is omitted — progress is tracked via item-level
-// localStorage state. Add it in future if per-room Firestore writes are needed.
 export interface RoomWizardProps {
   rooms: Room[];
   activeRoomIds: string[];
@@ -25,11 +23,55 @@ export interface RoomWizardProps {
   readOnly?: boolean;
 }
 
-// --- Room Overview ---
+const CONDITIONS: Condition[] = [
+  Condition.EXCELLENT, Condition.GOOD, Condition.FAIR,
+  Condition.CWA, Condition.POOR, Condition.NEEDS_ATTENTION
+];
 
-interface RoomOverviewProps {
+const CLEANLINESS_OPTIONS: Cleanliness[] = [
+  Cleanliness.PROFESSIONAL, Cleanliness.DOMESTIC, Cleanliness.GOOD,
+  Cleanliness.FAIR, Cleanliness.POOR, Cleanliness.DIRTY
+];
+
+// Strong solid selected colours for condition buttons
+const CONDITION_SELECTED: Record<string, string> = {
+  [Condition.EXCELLENT]: 'bg-emerald-600 text-white border-emerald-700',
+  [Condition.GOOD]: 'bg-green-600 text-white border-green-700',
+  [Condition.FAIR]: 'bg-yellow-500 text-white border-yellow-600',
+  [Condition.CWA]: 'bg-blue-600 text-white border-blue-700',
+  [Condition.POOR]: 'bg-orange-600 text-white border-orange-700',
+  [Condition.NEEDS_ATTENTION]: 'bg-red-600 text-white border-red-700',
+};
+
+// Strong solid selected colours for cleanliness buttons
+const CLEANLINESS_SELECTED: Record<string, string> = {
+  [Cleanliness.PROFESSIONAL]: 'bg-violet-600 text-white border-violet-700',
+  [Cleanliness.DOMESTIC]: 'bg-blue-600 text-white border-blue-700',
+  [Cleanliness.GOOD]: 'bg-green-600 text-white border-green-700',
+  [Cleanliness.FAIR]: 'bg-yellow-500 text-white border-yellow-600',
+  [Cleanliness.POOR]: 'bg-orange-600 text-white border-orange-700',
+  [Cleanliness.DIRTY]: 'bg-red-600 text-white border-red-700',
+};
+
+// Helpers for room progress
+function getRoomProgress(room: Room, mode: 'checkin' | 'checkout', checkoutItems?: { [itemId: string]: CheckOutItemResult }) {
+  const activeItems = room.items.filter(i => !i.excluded);
+  const total = activeItems.length;
+  let done = 0;
+  if (mode === 'checkin') {
+    done = activeItems.filter(i => i.condition).length;
+  } else {
+    done = activeItems.filter(i => checkoutItems?.[i.id] !== undefined).length;
+  }
+  return { done, total, isComplete: total > 0 && done === total, isInProgress: done > 0 && done < total };
+}
+
+// --- Room Sidebar ---
+
+interface RoomSidebarProps {
   rooms: Room[];
   activeRoomIds: string[];
+  selectedRoomId: string | null;
   mode: 'checkin' | 'checkout';
   checkoutItems?: { [itemId: string]: CheckOutItemResult };
   onRoomSelect: (roomId: string) => void;
@@ -37,148 +79,125 @@ interface RoomOverviewProps {
   readOnly?: boolean;
 }
 
-const RoomOverview: React.FC<RoomOverviewProps> = ({
-  rooms, activeRoomIds, mode, checkoutItems, onRoomSelect, onToggleRoom, readOnly
+const RoomSidebar: React.FC<RoomSidebarProps> = ({
+  rooms, activeRoomIds, selectedRoomId, mode, checkoutItems,
+  onRoomSelect, onToggleRoom, readOnly
 }) => {
-  const firstIncomplete = rooms.find(r => {
-    if (!activeRoomIds.includes(r.id)) return false;
-    const activeItems = r.items.filter(i => !i.excluded);
-    if (mode === 'checkin') return activeItems.some(i => !i.condition);
-    return activeItems.some(i => !checkoutItems?.[i.id]);
-  });
-
-  const groups: { label: string; rooms: Room[] }[] = [];
-  rooms.forEach(room => {
-    const label = room.floorGroup ?? 'Other';
-    const existing = groups.find(g => g.label === label);
-    if (existing) existing.rooms.push(room);
-    else groups.push({ label, rooms: [room] });
-  });
-
-  const allActive = rooms.filter(r => activeRoomIds.includes(r.id));
-  const allActiveItems = allActive.flatMap(r => r.items.filter(i => !i.excluded));
-  const doneItems = mode === 'checkin'
+  const allActiveItems = rooms
+    .filter(r => activeRoomIds.includes(r.id))
+    .flatMap(r => r.items.filter(i => !i.excluded));
+  const totalDone = mode === 'checkin'
     ? allActiveItems.filter(i => i.condition).length
     : allActiveItems.filter(i => checkoutItems?.[i.id] !== undefined).length;
-  const pct = allActiveItems.length ? Math.round((doneItems / allActiveItems.length) * 100) : 0;
+  const overallPct = allActiveItems.length
+    ? Math.round((totalDone / allActiveItems.length) * 100)
+    : 0;
+
+  const firstIncomplete = rooms.find(r => {
+    if (!activeRoomIds.includes(r.id)) return false;
+    const { isComplete } = getRoomProgress(r, mode, checkoutItems);
+    return !isComplete;
+  });
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <div className="bg-[#0f172a] text-white px-4 pt-4 pb-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-slate-300 uppercase tracking-widest">
-            {mode === 'checkin' ? 'Check-In' : 'Check-Out'} — Rooms
+    <div className="flex flex-col h-full bg-[#0f172a] text-white overflow-y-auto">
+      {/* Overall progress */}
+      <div className="px-3 pt-4 pb-3 border-b border-slate-700">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            {mode === 'checkin' ? 'Check-In' : 'Check-Out'}
           </span>
-          <span className="text-[#d4af37] text-sm font-bold">{pct}% complete</span>
+          <span className="text-[#d4af37] text-xs font-bold">{overallPct}%</span>
         </div>
         <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
           <div
             className="h-1.5 rounded-full transition-all"
-            style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #d4af37, #f59e0b)' }}
+            style={{ width: `${overallPct}%`, background: 'linear-gradient(90deg, #d4af37, #f59e0b)' }}
           />
         </div>
-      </div>
-
-      {firstIncomplete && !readOnly && (
-        <div className="px-4 py-3 bg-[#0f172a] border-t border-slate-700">
+        {firstIncomplete && !readOnly && (
           <button
             onClick={() => onRoomSelect(firstIncomplete.id)}
-            className="w-full bg-[#d4af37] text-[#0f172a] font-bold py-2.5 rounded-xl text-sm"
+            className="mt-2.5 w-full bg-[#d4af37] text-[#0f172a] text-xs font-bold py-2 rounded-lg"
           >
-            Continue → {firstIncomplete.name}
+            Continue →
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-        {groups.map(group => (
-          <div key={group.label}>
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-              {group.label}
-            </h3>
-            <div className="space-y-2">
-              {group.rooms.map(room => {
-                const isActive = activeRoomIds.includes(room.id);
-                const activeItems = room.items.filter(i => !i.excluded);
-                const hiddenCount = room.items.filter(i => i.excluded).length;
+      {/* Room list */}
+      <div className="flex-1 py-2 overflow-y-auto">
+        {rooms.map(room => {
+          const isActive = activeRoomIds.includes(room.id);
+          const { done, total, isComplete, isInProgress } = getRoomProgress(room, mode, checkoutItems);
+          const iconClass = ROOM_ICONS[room.name] ?? 'fa-home';
+          const isSelected = room.id === selectedRoomId;
 
-                let doneCount = 0;
-                if (mode === 'checkin') {
-                  doneCount = activeItems.filter(i => i.condition).length;
-                } else {
-                  doneCount = activeItems.filter(i => checkoutItems?.[i.id] !== undefined).length;
-                }
-                const total = activeItems.length;
-                const isComplete = total > 0 && doneCount === total;
-                const isInProgress = doneCount > 0 && !isComplete;
-                const iconClass = ROOM_ICONS[room.name] ?? 'fa-home';
+          return (
+            <div
+              key={room.id}
+              className={`mx-2 mb-1 rounded-lg cursor-pointer transition-all ${
+                isSelected
+                  ? 'bg-[#d4af37]/20 border border-[#d4af37]/60'
+                  : 'border border-transparent hover:bg-slate-700/50'
+              } ${!isActive ? 'opacity-40' : ''}`}
+              onClick={() => isActive && !readOnly && onRoomSelect(room.id)}
+            >
+              <div className="flex items-center gap-2 px-2.5 py-2">
+                {/* Icon / tick */}
+                <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 text-xs ${
+                  isComplete ? 'bg-green-500' : isInProgress ? 'bg-[#d4af37]' : 'bg-slate-700'
+                }`}>
+                  {isComplete
+                    ? <i className="fas fa-check text-white text-[10px]" />
+                    : <i className={`fas ${iconClass} text-[10px] ${isInProgress ? 'text-[#0f172a]' : 'text-slate-400'}`} />
+                  }
+                </div>
 
-                return (
-                  <div
-                    key={room.id}
-                    className={`bg-white rounded-xl border-2 overflow-hidden transition-all ${
-                      !isActive
-                        ? 'border-slate-100 opacity-50'
-                        : isComplete
-                        ? 'border-green-400'
-                        : isInProgress
-                        ? 'border-[#d4af37]'
-                        : 'border-slate-200'
-                    }`}
-                  >
-                    <div
-                      className="flex items-center gap-3 p-3 cursor-pointer"
-                      onClick={() => isActive && !readOnly && onRoomSelect(room.id)}
-                    >
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        isComplete ? 'bg-green-100' : 'bg-slate-100'
-                      }`}>
-                        {isComplete
-                          ? <i className="fas fa-check text-green-600 text-sm" />
-                          : <i className={`fas ${iconClass} text-slate-600 text-sm`} />
-                        }
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-bold text-sm ${!isActive ? 'line-through text-slate-400' : 'text-slate-900'}`}>
-                          {room.name}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {isComplete
-                            ? <span className="text-green-600 font-semibold">Complete ✓</span>
-                            : isInProgress
-                            ? <span className="text-[#d4af37] font-semibold">{doneCount} / {total} items</span>
-                            : `${total} items`
-                          }
-                          {hiddenCount > 0 && (
-                            <span className="ml-2 text-slate-400">({hiddenCount} hidden)</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {!readOnly && (
-                          <button
-                            onClick={e => { e.stopPropagation(); onToggleRoom(room.id); }}
-                            title={isActive ? 'Exclude room from report' : 'Include room in report'}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                              isActive ? 'text-slate-400 hover:text-red-400' : 'text-slate-300 hover:text-green-500'
-                            }`}
-                          >
-                            <i className={`fas ${isActive ? 'fa-eye' : 'fa-eye-slash'} text-sm`} />
-                          </button>
-                        )}
-                        {isActive && !readOnly && (
-                          <i className="fas fa-chevron-right text-slate-300 text-xs" />
-                        )}
-                      </div>
-                    </div>
+                {/* Room name + progress */}
+                <div className="flex-1 min-w-0">
+                  <div className={`text-xs font-semibold truncate ${
+                    isSelected ? 'text-[#d4af37]' : isComplete ? 'text-green-400' : 'text-slate-200'
+                  } ${!isActive ? 'line-through' : ''}`}>
+                    {room.name}
                   </div>
-                );
-              })}
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {isComplete
+                      ? <span className="text-green-500">Complete ✓</span>
+                      : isInProgress
+                      ? <span className="text-[#d4af37]">{done}/{total}</span>
+                      : <span>{total} items</span>
+                    }
+                  </div>
+                </div>
+
+                {/* Progress mini bar */}
+                {total > 0 && (
+                  <div className="w-8 h-1 bg-slate-700 rounded-full overflow-hidden flex-shrink-0">
+                    <div
+                      className="h-1 rounded-full"
+                      style={{
+                        width: `${Math.round((done / total) * 100)}%`,
+                        background: isComplete ? '#22c55e' : '#d4af37'
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Eye toggle */}
+                {!readOnly && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onToggleRoom(room.id); }}
+                    title={isActive ? 'Exclude room' : 'Include room'}
+                    className="text-slate-600 hover:text-slate-300 p-0.5 flex-shrink-0"
+                  >
+                    <i className={`fas ${isActive ? 'fa-eye' : 'fa-eye-slash'} text-[10px]`} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -196,23 +215,12 @@ interface ItemWizardProps {
   onCheckoutItemUpdate?: (itemId: string, result: CheckOutItemResult) => void;
   onToggleItem: (itemId: string) => void;
   onAddPhoto: (itemId: string, file: File) => Promise<void>;
-  onBack: () => void;
   readOnly?: boolean;
 }
 
-const CONDITIONS: Condition[] = [
-  Condition.EXCELLENT, Condition.GOOD, Condition.FAIR,
-  Condition.CWA, Condition.POOR, Condition.NEEDS_ATTENTION
-];
-
-const CLEANLINESS_OPTIONS: Cleanliness[] = [
-  Cleanliness.PROFESSIONAL, Cleanliness.DOMESTIC, Cleanliness.GOOD,
-  Cleanliness.FAIR, Cleanliness.POOR, Cleanliness.DIRTY
-];
-
 const ItemWizard: React.FC<ItemWizardProps> = ({
   room, mode, baseline, checkoutItems, tenantReview,
-  onItemUpdate, onCheckoutItemUpdate, onToggleItem, onAddPhoto, onBack, readOnly
+  onItemUpdate, onCheckoutItemUpdate, onToggleItem, onAddPhoto, readOnly
 }) => {
   const activeItems = room.items.filter(i => !i.excluded);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -220,16 +228,19 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
   const [quickSetApplied, setQuickSetApplied] = useState(false);
 
   const item = activeItems[currentIndex];
-  if (!item) return null;
+  if (!item) return (
+    <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8">
+      <i className="fas fa-check-circle text-4xl text-green-400 mb-3" />
+      <p className="font-semibold text-slate-600">All items done for {room.name}</p>
+    </div>
+  );
 
   const checkoutResult = checkoutItems?.[item.id];
   const baselineItem = baseline?.[item.id];
   const disputeData = tenantReview?.[item.id];
 
   const handleQuickSet = (condition: Condition, cleanliness: Cleanliness) => {
-    activeItems.forEach(i => {
-      onItemUpdate(i.id, { condition, cleanliness });
-    });
+    activeItems.forEach(i => onItemUpdate(i.id, { condition, cleanliness }));
     setQuickSetApplied(true);
   };
 
@@ -242,30 +253,30 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
 
   const goNext = () => {
     if (currentIndex < activeItems.length - 1) setCurrentIndex(i => i + 1);
-    else onBack();
+  };
+
+  const goPrev = () => {
+    if (currentIndex > 0) setCurrentIndex(i => i - 1);
   };
 
   const pct = Math.round(((currentIndex + 1) / activeItems.length) * 100);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-[#0f172a] text-white px-4 pt-3 pb-2">
-        <div className="flex items-center gap-3 mb-2">
-          <button onClick={onBack} className="text-slate-400 hover:text-white p-1">
-            <i className="fas fa-arrow-left" />
-          </button>
-          <span className="text-sm font-semibold truncate flex-1">{room.name}</span>
-          <span className="text-[#d4af37] text-sm font-bold whitespace-nowrap">
-            {currentIndex + 1} / {activeItems.length}
-          </span>
+    <div className="flex flex-col h-full bg-white">
+      {/* Item header */}
+      <div className="bg-slate-50 border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest truncate">{room.name}</span>
+          <span className="text-xs text-slate-400 whitespace-nowrap ml-2">{currentIndex + 1} / {activeItems.length}</span>
         </div>
-        <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
+        <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
           <div className="h-1 bg-[#d4af37] rounded-full transition-all" style={{ width: `${pct}%` }} />
         </div>
       </div>
 
+      {/* Quick set */}
       {currentIndex === 0 && mode === 'checkin' && !quickSetApplied && !readOnly && (
-        <div className="bg-[#d4af37]/10 border-b border-[#d4af37]/30 px-4 py-2 flex items-center gap-2">
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 flex-wrap">
           <span className="text-xs text-slate-600 font-semibold">Set all:</span>
           <button
             onClick={() => handleQuickSet(Condition.GOOD, Cleanliness.DOMESTIC)}
@@ -282,20 +293,23 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
         </div>
       )}
 
+      {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Item name + hide toggle */}
         <div className="flex items-start justify-between gap-2">
           <h2 className="text-lg font-bold text-slate-900">{item.name}</h2>
           {!readOnly && (
             <button
               onClick={() => onToggleItem(item.id)}
               title="Hide item from report"
-              className="text-slate-400 hover:text-red-400 p-1 mt-0.5"
+              className="text-slate-400 hover:text-red-400 p-1 mt-0.5 flex-shrink-0"
             >
               <i className="fas fa-eye text-sm" />
             </button>
           )}
         </div>
 
+        {/* Checkout baseline */}
         {mode === 'checkout' && baselineItem && (
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
             <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Check-In Baseline</div>
@@ -307,9 +321,7 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
                 {baselineItem.cleanliness}
               </span>
             </div>
-            {baselineItem.description && (
-              <p className="text-xs text-slate-600">{baselineItem.description}</p>
-            )}
+            {baselineItem.description && <p className="text-xs text-slate-600">{baselineItem.description}</p>}
             {(baselineItem.qualityTier || baselineItem.installedDate || baselineItem.purchasePrice) && (
               <div className="text-[10px] text-slate-400 mt-1 space-x-3">
                 {baselineItem.qualityTier && <span>Tier: {baselineItem.qualityTier}</span>}
@@ -320,6 +332,7 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
           </div>
         )}
 
+        {/* Disputed */}
         {mode === 'checkout' && disputeData && !disputeData.agreed && (
           <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
             <div className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-1">Tenant Disputed</div>
@@ -327,6 +340,7 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
           </div>
         )}
 
+        {/* Check-in fields */}
         {mode === 'checkin' && (
           <>
             <div>
@@ -341,44 +355,53 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
               />
             </div>
 
+            {/* Condition */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">Condition</label>
               <div className="grid grid-cols-3 gap-2">
-                {CONDITIONS.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => !readOnly && onItemUpdate(item.id, { condition: c })}
-                    className={`py-2.5 rounded-xl text-xs font-bold border-2 transition-all min-h-[44px] ${
-                      item.condition === c
-                        ? 'border-[#0f172a] ' + CONDITION_COLORS[c] + ' shadow-md scale-105'
-                        : 'border-transparent ' + CONDITION_COLORS[c] + ' opacity-60'
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
+                {CONDITIONS.map(c => {
+                  const isSelected = item.condition === c;
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => !readOnly && onItemUpdate(item.id, { condition: c })}
+                      className={`py-3 rounded-xl text-xs font-bold border-2 transition-all min-h-[48px] ${
+                        isSelected
+                          ? (CONDITION_SELECTED[c] ?? 'bg-slate-800 text-white border-slate-900') + ' shadow-lg ring-2 ring-offset-1 ring-slate-900/30'
+                          : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Cleanliness */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">Cleanliness</label>
               <div className="grid grid-cols-3 gap-2">
-                {CLEANLINESS_OPTIONS.map(cl => (
-                  <button
-                    key={cl}
-                    onClick={() => !readOnly && onItemUpdate(item.id, { cleanliness: cl })}
-                    className={`py-2.5 rounded-xl text-xs font-bold border-2 transition-all min-h-[44px] ${
-                      item.cleanliness === cl
-                        ? 'border-[#0f172a] ' + CLEANLINESS_COLORS[cl] + ' shadow-md scale-105'
-                        : 'border-transparent ' + CLEANLINESS_COLORS[cl] + ' opacity-60'
-                    }`}
-                  >
-                    {cl}
-                  </button>
-                ))}
+                {CLEANLINESS_OPTIONS.map(cl => {
+                  const isSelected = item.cleanliness === cl;
+                  return (
+                    <button
+                      key={cl}
+                      onClick={() => !readOnly && onItemUpdate(item.id, { cleanliness: cl })}
+                      className={`py-3 rounded-xl text-xs font-bold border-2 transition-all min-h-[48px] ${
+                        isSelected
+                          ? (CLEANLINESS_SELECTED[cl] ?? 'bg-slate-800 text-white border-slate-900') + ' shadow-lg ring-2 ring-offset-1 ring-slate-900/30'
+                          : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cl}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Photos */}
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1">
                 Photos ({item.photos.length})
@@ -404,6 +427,7 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
           </>
         )}
 
+        {/* Checkout fields */}
         {mode === 'checkout' && !readOnly && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -411,7 +435,7 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
                 onClick={() => onCheckoutItemUpdate?.(item.id, { changed: false })}
                 className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${
                   checkoutResult && !checkoutResult.changed
-                    ? 'bg-green-100 border-green-500 text-green-800'
+                    ? 'bg-green-600 text-white border-green-700 shadow-lg'
                     : 'bg-slate-50 border-slate-200 text-slate-600'
                 }`}
               >
@@ -421,7 +445,7 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
                 onClick={() => onCheckoutItemUpdate?.(item.id, { changed: true, responsibility: 'tenant' })}
                 className={`py-3 rounded-xl font-bold text-sm border-2 transition-all ${
                   checkoutResult?.changed
-                    ? 'bg-red-100 border-red-500 text-red-800'
+                    ? 'bg-red-600 text-white border-red-700 shadow-lg'
                     : 'bg-slate-50 border-slate-200 text-slate-600'
                 }`}
               >
@@ -457,8 +481,8 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
                       onClick={() => onCheckoutItemUpdate?.(item.id, { ...checkoutResult, responsibility: r })}
                       className={`py-2 rounded-lg font-bold text-xs border-2 transition-all ${
                         checkoutResult.responsibility === r
-                          ? r === 'tenant' ? 'bg-red-100 border-red-500 text-red-800' : 'bg-blue-100 border-blue-500 text-blue-800'
-                          : 'bg-white border-slate-200 text-slate-500'
+                          ? 'bg-[#0f172a] text-white border-[#0f172a]'
+                          : 'bg-white text-slate-600 border-slate-200'
                       }`}
                     >
                       {r.charAt(0).toUpperCase() + r.slice(1)}
@@ -475,8 +499,8 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
                       step="0.01"
                       value={checkoutResult.estimatedCost ?? ''}
                       onChange={e => onCheckoutItemUpdate?.(item.id, { ...checkoutResult, estimatedCost: parseFloat(e.target.value) || undefined })}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
                       placeholder="0.00"
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4af37]"
                     />
                   </div>
                 )}
@@ -486,34 +510,65 @@ const ItemWizard: React.FC<ItemWizardProps> = ({
                   <textarea
                     value={checkoutResult.notes ?? ''}
                     onChange={e => onCheckoutItemUpdate?.(item.id, { ...checkoutResult, notes: e.target.value })}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 resize-none"
                     rows={2}
-                    placeholder="Describe the damage or change…"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4af37] resize-none"
+                    placeholder="Describe the issue…"
                   />
                 </div>
-
-                <label className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border-2 border-dashed border-red-200 text-red-400 cursor-pointer ${uploading ? 'opacity-50' : 'hover:border-red-400'}`}>
-                  <i className="fas fa-camera" />
-                  {uploading ? 'Uploading…' : `Add Photo (${checkoutResult.photos?.length ?? 0}/5)`}
-                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} disabled={uploading || (checkoutResult.photos?.length ?? 0) >= 5} />
-                </label>
               </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="px-4 py-4 bg-white border-t border-slate-100">
-        <button
-          onClick={goNext}
-          className="w-full bg-[#d4af37] text-[#0f172a] font-bold py-3 rounded-xl text-sm"
-        >
-          {currentIndex < activeItems.length - 1 ? 'Next →' : 'Finish Room ✓'}
-        </button>
-      </div>
+      {/* Prev / Next navigation */}
+      {!readOnly && (
+        <div className="border-t border-slate-200 px-4 py-3 flex gap-3 bg-white">
+          <button
+            onClick={goPrev}
+            disabled={currentIndex === 0}
+            className="flex-1 py-3 rounded-xl font-bold text-sm border-2 border-slate-200 text-slate-500 disabled:opacity-30"
+          >
+            ← Prev
+          </button>
+          <button
+            onClick={goNext}
+            disabled={currentIndex >= activeItems.length - 1}
+            className="flex-2 flex-grow py-3 rounded-xl font-bold text-sm bg-[#0f172a] text-[#d4af37] disabled:opacity-30"
+          >
+            {currentIndex < activeItems.length - 1 ? 'Next →' : 'All done ✓'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
+
+// --- Welcome panel when no room selected ---
+
+const SelectRoomPanel: React.FC<{ onContinue: () => void; firstIncomplete: Room | undefined; mode: 'checkin' | 'checkout' }> = ({
+  onContinue, firstIncomplete, mode
+}) => (
+  <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
+    <div className="w-16 h-16 rounded-full bg-[#0f172a] flex items-center justify-center mb-4">
+      <i className="fas fa-clipboard-list text-[#d4af37] text-2xl" />
+    </div>
+    <h3 className="text-lg font-bold text-slate-800 mb-2">
+      {mode === 'checkin' ? 'Check-In Rooms' : 'Check-Out Rooms'}
+    </h3>
+    <p className="text-sm text-slate-500 mb-6">
+      Select any room from the sidebar to begin, or tap Continue to pick up where you left off.
+    </p>
+    {firstIncomplete && (
+      <button
+        onClick={onContinue}
+        className="bg-[#d4af37] text-[#0f172a] font-bold px-6 py-3 rounded-xl text-sm"
+      >
+        Continue → {firstIncomplete.name}
+      </button>
+    )}
+  </div>
+);
 
 // --- Main RoomWizard ---
 
@@ -524,37 +579,87 @@ export const RoomWizard: React.FC<RoomWizardProps> = ({
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const selectedRoom = rooms.find(r => r.id === selectedRoomId);
 
-  if (selectedRoom) {
-    return (
-      <ItemWizard
-        room={selectedRoom}
-        mode={mode}
-        baseline={baseline}
-        checkoutItems={checkoutItems}
-        tenantReview={tenantReview}
-        onItemUpdate={(itemId, updates) => onItemUpdate(selectedRoom.id, itemId, updates)}
-        onCheckoutItemUpdate={onCheckoutItemUpdate
-          ? (itemId, result) => onCheckoutItemUpdate(selectedRoom.id, itemId, result)
-          : undefined
-        }
-        onToggleItem={itemId => onToggleItem(selectedRoom.id, itemId)}
-        onAddPhoto={(itemId, file) => onAddPhoto(selectedRoom.id, itemId, file)}
-        onBack={() => setSelectedRoomId(null)}
-        readOnly={readOnly}
-      />
-    );
-  }
+  const firstIncomplete = rooms.find(r => {
+    if (!activeRoomIds.includes(r.id)) return false;
+    const activeItems = r.items.filter(i => !i.excluded);
+    if (mode === 'checkin') return activeItems.some(i => !i.condition);
+    return activeItems.some(i => !checkoutItems?.[i.id]);
+  });
 
   return (
-    <RoomOverview
-      rooms={rooms}
-      activeRoomIds={activeRoomIds}
-      mode={mode}
-      checkoutItems={checkoutItems}
-      onRoomSelect={setSelectedRoomId}
-      onToggleRoom={onToggleRoom}
-      readOnly={readOnly}
-    />
+    <div className="flex" style={{ minHeight: '70vh' }}>
+      {/* Fixed sidebar — hidden on very small screens, shown from sm up */}
+      <div className="hidden sm:flex flex-col flex-shrink-0 border-r border-slate-200" style={{ width: 200 }}>
+        <RoomSidebar
+          rooms={rooms}
+          activeRoomIds={activeRoomIds}
+          selectedRoomId={selectedRoomId}
+          mode={mode}
+          checkoutItems={checkoutItems}
+          onRoomSelect={setSelectedRoomId}
+          onToggleRoom={onToggleRoom}
+          readOnly={readOnly}
+        />
+      </div>
+
+      {/* Mobile: horizontal room strip */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <div className="sm:hidden bg-[#0f172a] px-3 py-2 overflow-x-auto">
+          <div className="flex gap-2 min-w-max">
+            {rooms.filter(r => activeRoomIds.includes(r.id)).map(room => {
+              const { done, total, isComplete } = getRoomProgress(room, mode, checkoutItems);
+              const isSelected = room.id === selectedRoomId;
+              return (
+                <button
+                  key={room.id}
+                  onClick={() => !readOnly && setSelectedRoomId(room.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border ${
+                    isSelected
+                      ? 'bg-[#d4af37] text-[#0f172a] border-[#d4af37]'
+                      : isComplete
+                      ? 'bg-green-500/20 text-green-400 border-green-500/40'
+                      : 'bg-slate-700 text-slate-300 border-slate-600'
+                  }`}
+                >
+                  {isComplete ? <i className="fas fa-check text-[10px]" /> : null}
+                  {room.name}
+                  {!isComplete && total > 0 && (
+                    <span className="text-[10px] opacity-70">{done}/{total}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Main content area */}
+        <div className="flex-1 min-w-0">
+          {selectedRoom ? (
+            <ItemWizard
+              room={selectedRoom}
+              mode={mode}
+              baseline={baseline}
+              checkoutItems={checkoutItems}
+              tenantReview={tenantReview}
+              onItemUpdate={(itemId, updates) => onItemUpdate(selectedRoom.id, itemId, updates)}
+              onCheckoutItemUpdate={onCheckoutItemUpdate
+                ? (itemId, result) => onCheckoutItemUpdate(selectedRoom.id, itemId, result)
+                : undefined
+              }
+              onToggleItem={itemId => onToggleItem(selectedRoom.id, itemId)}
+              onAddPhoto={(itemId, file) => onAddPhoto(selectedRoom.id, itemId, file)}
+              readOnly={readOnly}
+            />
+          ) : (
+            <SelectRoomPanel
+              onContinue={() => firstIncomplete && setSelectedRoomId(firstIncomplete.id)}
+              firstIncomplete={firstIncomplete}
+              mode={mode}
+            />
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 

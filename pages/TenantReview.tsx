@@ -4,7 +4,6 @@ import { useParams } from 'react-router-dom';
 import { getInventoryByToken, updateTenantProgress, FirestoreInventory, TenantReviewData } from '../services/inventory';
 import { captureElementAsPDF } from '../services/pdf';
 import { generateInventoryPDF } from '../services/pdfTemplate';
-import bergasonLogo from '../bergasonlogo.png';
 import { uploadPDFToStorage } from '../services/storage';
 import { sendInventoryEmail } from '../services/email';
 import { SignaturePad } from '../components/SignaturePad';
