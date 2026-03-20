@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, collection, getDocs, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { Inventory } from '../types';
 
@@ -142,13 +142,15 @@ export const activateReviewLink = async (
 ): Promise<void> => {
   const reviewSentAt = Date.now();
   const expiresAt = moveInDate + 5 * 24 * 60 * 60 * 1000;
-  await updateDoc(doc(db, 'inventories', token), {
+  // Use set+merge so this works even if the doc doesn't exist in Firestore yet
+  // (inventories created before cross-device sync was enabled)
+  await setDoc(doc(db, 'inventories', token), {
     status: 'review_sent',
     moveInDate,
     reviewSentAt,
     expiresAt,
     'inventory.activeRoomIds': activeRoomIds,
-  });
+  }, { merge: true });
 };
 
 export const getInventoryByToken = async (token: string): Promise<FirestoreInventory | null> => {
@@ -181,4 +183,62 @@ export const saveDisputeResponses = async (
     agentDisputeResponse,
     status: 'dispute_review'
   });
+};
+
+// ── Draft inventory sync (cross-device) ──────────────────────────────────────
+
+const DRAFTS_COLLECTION = 'drafts';
+
+/** Save a draft inventory to Firestore so it appears on all devices */
+export const saveDraftToFirestore = async (inventory: Inventory): Promise<void> => {
+  await setDoc(doc(db, DRAFTS_COLLECTION, inventory.id), {
+    inventory,
+    updatedAt: Date.now(),
+  });
+};
+
+/** Load all draft inventories from Firestore (drafts collection) */
+export const loadDraftsFromFirestore = async (): Promise<Inventory[]> => {
+  const q = query(collection(db, DRAFTS_COLLECTION), orderBy('updatedAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => (d.data() as { inventory: Inventory }).inventory);
+};
+
+/** Load ALL inventories for the office portal — merges drafts + sent inventories */
+export const loadAllInventoriesForPortal = async (): Promise<Inventory[]> => {
+  const results: Inventory[] = [];
+  const seen = new Set<string>();
+
+  // 1. Load from drafts collection (inventories saved from any device)
+  try {
+    const q = query(collection(db, DRAFTS_COLLECTION), orderBy('updatedAt', 'desc'));
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      const inv = (d.data() as { inventory: Inventory }).inventory;
+      if (inv?.id && !seen.has(inv.id)) {
+        results.push(inv);
+        seen.add(inv.id);
+      }
+    }
+  } catch { /* ignore — collection may not exist yet */ }
+
+  // 2. Load from inventories collection (inventories that were sent/signed)
+  try {
+    const snap = await getDocs(collection(db, 'inventories'));
+    for (const d of snap.docs) {
+      const data = d.data();
+      const inv = data.inventory as Inventory;
+      if (inv?.id && !seen.has(inv.id)) {
+        results.push(inv);
+        seen.add(inv.id);
+      }
+    }
+  } catch { /* ignore */ }
+
+  return results.sort((a, b) => (b.dateUpdated || 0) - (a.dateUpdated || 0));
+};
+
+/** Delete a draft from Firestore */
+export const deleteDraftFromFirestore = async (id: string): Promise<void> => {
+  await deleteDoc(doc(db, DRAFTS_COLLECTION, id));
 };

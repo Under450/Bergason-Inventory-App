@@ -3,6 +3,8 @@ import bergasonLogo from '../bergasonlogo.png';
 import { useParams } from 'react-router-dom';
 import { getInventoryByToken, updateTenantProgress, FirestoreInventory, TenantReviewData } from '../services/inventory';
 import { captureElementAsPDF } from '../services/pdf';
+import { generateInventoryPDF } from '../services/pdfTemplate';
+import bergasonLogo from '../bergasonlogo.png';
 import { uploadPDFToStorage } from '../services/storage';
 import { sendInventoryEmail } from '../services/email';
 import { SignaturePad } from '../components/SignaturePad';
@@ -43,6 +45,8 @@ const TenantReview: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
   const [reviewPdfUrl, setReviewPdfUrl] = useState<string | null>(null);
+  const [forwardEmail, setForwardEmail] = useState('');
+  const [forwardStatus, setForwardStatus] = useState<'idle'|'sending'|'sent'|'error'>('idle');
   const [timeRemaining, setTimeRemaining] = useState('');
   const [uploadingItem, setUploadingItem] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -104,7 +108,10 @@ const TenantReview: React.FC = () => {
   const hasUncommentedDisputes = () =>
     Object.values(review).some(r => r.agreed === false && !r.comment?.trim());
 
-  const canSubmit = allReviewed() && !hasUncommentedDisputes();
+  const hasUnphotographedDisputes = () =>
+    Object.values(review).some(r => r.agreed === false && (!r.photos || r.photos.length === 0));
+
+  const canSubmit = allReviewed() && !hasUncommentedDisputes() && !hasUnphotographedDisputes();
 
   const handleItemReview = async (itemId: string, agreed: boolean, comment = '') => {
     const existing = review[itemId] || {};
@@ -144,6 +151,24 @@ const TenantReview: React.FC = () => {
     }
   };
 
+  const handleForwardEmail = async () => {
+    if (!forwardEmail.trim() || !token || !data) return;
+    setForwardStatus('sending');
+    try {
+      await sendInventoryEmail({
+        type: 'review_complete',
+        tenantEmail: forwardEmail.trim(),
+        tenantName: data.tenantName,
+        address: data.inventory.address,
+        pdfStoragePath: `pdfs/${token}/review-complete.pdf`,
+        firestoreToken: token,
+      });
+      setForwardStatus('sent');
+    } catch {
+      setForwardStatus('error');
+    }
+  };
+
   const handleSubmit = async (signatureData: string) => {
     if (!token) return;
     setSaving(true);
@@ -158,22 +183,45 @@ const TenantReview: React.FC = () => {
       });
 
       setSaveStatus('Generating PDF report...');
-      if (reviewReportRef.current && data) {
+      if (data) {
         try {
-          const pdfBlob = await captureElementAsPDF(reviewReportRef.current);
-          setSaveStatus('Uploading PDF...');
-          const storagePath = `pdfs/${token}/review.pdf`;
-          const pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
-          await updateTenantProgress(token, { reviewPdfUrl: pdfUrl });
-          setReviewPdfUrl(pdfUrl);
+          // Generate the FULL inventory PDF (with disputes embedded) for DPS use
+          setSaveStatus('Generating full inventory PDF...');
+          const fullPdfBlob = await generateInventoryPDF(data.inventory, bergasonLogo as string);
+          setSaveStatus('Uploading full PDF...');
+          const fullStoragePath = `pdfs/${token}/review-complete.pdf`;
+          const fullPdfUrl = await uploadPDFToStorage(fullPdfBlob, fullStoragePath);
+          await updateTenantProgress(token, { reviewPdfUrl: fullPdfUrl });
+          setReviewPdfUrl(fullPdfUrl);
 
-          setSaveStatus('Sending email...');
+          // Also capture the review report (disputes summary) separately
+          let reviewStoragePath = fullStoragePath;
+          if (reviewReportRef.current) {
+            try {
+              const reviewBlob = await captureElementAsPDF(reviewReportRef.current);
+              reviewStoragePath = `pdfs/${token}/review-summary.pdf`;
+              await uploadPDFToStorage(reviewBlob, reviewStoragePath);
+            } catch { /* non-fatal */ }
+          }
+
+          // Convert full PDF to base64 to send as attachment
+          const fullPdfBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(fullPdfBlob);
+          });
+
+          setSaveStatus('Sending email to Bergason...');
+          // Strip PDF if too large before sending
+          const pdfPayload = fullPdfBase64.length < 8_000_000 ? fullPdfBase64 : undefined;
           await sendInventoryEmail({
             type: 'review_complete',
             tenantEmail: data.tenantEmail,
             tenantName: data.tenantName,
             address: data.inventory.address,
-            pdfStoragePath: storagePath,
+            pdfStoragePath: fullStoragePath,
+            pdfBuffer: pdfPayload,
             firestoreToken: token!,
           });
         } catch (pdfErr) {
@@ -538,10 +586,13 @@ const TenantReview: React.FC = () => {
                             <label className="flex items-center gap-2 text-sm text-orange-600 font-medium cursor-pointer w-fit">
                               {uploadingItem === item.id
                                 ? <><i className="fas fa-circle-notch fa-spin" /> Uploading...</>
-                                : <><i className="fas fa-camera" /> Add photo (optional)</>}
+                                : <><i className="fas fa-camera" /> Add photo <span className="text-red-500">*required</span></>}
                               <input type="file" accept="image/*" className="hidden"
                                 onChange={e => e.target.files?.[0] && handlePhotoUpload(item.id, e.target.files[0])} />
                             </label>
+                            {r.agreed === false && (!r.photos || r.photos.length === 0) && (
+                              <p className="text-xs text-red-500">A photo is required to support your dispute.</p>
+                            )}
                             {r.photos && r.photos.length > 0 && (
                               <div className="flex gap-2 flex-wrap">
                                 {r.photos.map((url, i) => (
@@ -571,8 +622,11 @@ const TenantReview: React.FC = () => {
               </div>
               <span className="text-xs font-bold text-slate-500 shrink-0">{reviewedCount}/{totalItems}</span>
             </div>
-            {allReviewed() && hasUncommentedDisputes() && (
-              <p className="text-xs text-center text-red-500">Please add a comment for each disputed item before submitting.</p>
+            {allReviewed() && (hasUncommentedDisputes() || hasUnphotographedDisputes()) && (
+              <p className="text-xs text-center text-red-500">
+                {hasUncommentedDisputes() ? 'Please add a comment for each disputed item.' : ''}
+                {hasUnphotographedDisputes() ? ' A photo is required for each dispute.' : ''}
+              </p>
             )}
             <button
               onClick={() => { setStage('signature'); window.scrollTo(0, 0); }}
@@ -872,7 +926,40 @@ const TenantReview: React.FC = () => {
               <i className="fas fa-file-pdf text-red-400"></i> Download Your Review PDF
             </a>
           )}
-          <p className="text-slate-400 text-sm">Any disputes you raised have been recorded and will be reviewed. You do not need to take any further action.</p>
+          <p className="text-slate-400 text-sm mb-6">Any disputes you raised have been recorded and will be reviewed. You do not need to take any further action.</p>
+
+          {/* Forward copy to safe storage */}
+          {reviewPdfUrl && (
+            <div className="w-full max-w-sm mx-auto mt-2 p-4 bg-white border border-slate-200 rounded-xl text-left">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">
+                <i className="fas fa-shield-alt mr-1 text-bergason-gold"></i> Send copy for safe storage
+              </div>
+              <p className="text-xs text-slate-400 mb-3">Forward the signed PDF to an email address for backup storage.</p>
+              {forwardStatus === 'sent' ? (
+                <div className="text-xs text-green-600 font-bold bg-green-50 px-3 py-2 rounded-lg">
+                  ✓ Copy sent to {forwardEmail}
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={forwardEmail}
+                    onChange={e => setForwardEmail(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleForwardEmail()}
+                    placeholder="backup@email.com"
+                    className="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-slate-400"
+                  />
+                  <button
+                    onClick={handleForwardEmail}
+                    disabled={forwardStatus === 'sending' || !forwardEmail.trim()}
+                    className="text-xs bg-[#0f172a] text-white px-3 py-2 rounded-lg font-bold disabled:opacity-40"
+                  >
+                    {forwardStatus === 'sending' ? '...' : forwardStatus === 'error' ? 'Retry' : 'Send'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

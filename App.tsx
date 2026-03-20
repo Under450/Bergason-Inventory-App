@@ -4,9 +4,11 @@ import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-
 import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
 import CheckOut from './pages/CheckOut';
-import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, getInventoryByToken, saveDisputeResponses, FirestoreInventory } from './services/inventory';
+import OfficePortal from './pages/OfficePortal';
+import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, getInventoryByToken, saveDisputeResponses, FirestoreInventory, saveDraftToFirestore, loadDraftsFromFirestore, deleteDraftFromFirestore } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { generateAdjudicatorPdf } from './services/checkoutPdf';
+import { generateInventoryPDF } from './services/pdfTemplate';
 import { uploadPDFToStorage } from './services/storage';
 import { sendInventoryEmail } from './services/email';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
@@ -84,6 +86,8 @@ const saveInventory = (inventory: Inventory) => {
     all.push(inventory);
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  // Sync to Firestore so other devices (phone, tablet, etc.) can see it
+  saveDraftToFirestore(inventory).catch(() => { /* offline — local only */ });
 };
 
 const getInventoryById = (id: string): Inventory | undefined => {
@@ -93,6 +97,7 @@ const getInventoryById = (id: string): Inventory | undefined => {
 const deleteInventoryById = (id: string) => {
   const all = getInventories().filter(i => i.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  deleteDraftFromFirestore(id).catch(() => { /* ignore */ });
   // Also remove token state for this inventory
   try {
     const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -117,7 +122,19 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    setInventories(getInventories().sort((a, b) => b.dateUpdated - a.dateUpdated));
+    // Load local inventories immediately
+    const local = getInventories();
+    setInventories(local.sort((a, b) => b.dateUpdated - a.dateUpdated));
+    // Then merge with Firestore drafts (catches inventories created on other devices)
+    loadDraftsFromFirestore().then(remote => {
+      const localIds = new Set(local.map(i => i.id));
+      const newRemote = remote.filter(i => !localIds.has(i.id));
+      if (newRemote.length > 0) {
+        // Save new remote ones to local storage so they persist offline
+        newRemote.forEach(inv => saveInventory(inv));
+        setInventories(getInventories().sort((a, b) => b.dateUpdated - a.dateUpdated));
+      }
+    }).catch(() => { /* offline — local only */ });
   }, []);
 
   const createNew = (propertyTypeLabel: string) => {
@@ -194,13 +211,14 @@ const Dashboard = () => {
             Inventory Management System
           </h2>
         </div>
-        <div className="flex justify-center">
+        <div className="flex justify-center gap-3">
           <Button
             onClick={() => setShowPropertyTypeModal(true)}
             className="bg-bergason-gold text-white hover:bg-amber-600 shadow-lg shadow-amber-900/20 px-8 py-3 rounded-full font-bold transition-transform hover:scale-105"
           >
             <i className="fas fa-plus mr-2"></i> New Inventory
           </Button>
+
         </div>
       </header>
 
@@ -251,6 +269,63 @@ const Dashboard = () => {
                           </>
                         )}
                       </div>
+                      {/* Status pipeline bar */}
+                      {(() => {
+                        const ts = getTokenState(inv.id);
+                        const isComplete = (inv as any).signatureStatus === 'signed' || (inv as any).status === 'completed';
+                        const reviewSent = !!(ts?.reviewSentLink);
+                        const signed = !!(ts?.signToken);
+                        const locked = inv.status === 'LOCKED';
+                        const draft = !locked && !signed && !reviewSent && !isComplete;
+
+                        // Step index: 0=Draft 1=Ready 2=Signed 3=Review sent 4=Complete
+                        const step = isComplete ? 4 : reviewSent ? 3 : signed ? 2 : locked ? 1 : 0;
+
+                        const steps = [
+                          { label: 'Draft',   icon: 'fa-pencil-alt' },
+                          { label: 'Ready',   icon: 'fa-lock' },
+                          { label: 'Signed',  icon: 'fa-pen-nib' },
+                          { label: 'Review',  icon: 'fa-paper-plane' },
+                          { label: 'Done',    icon: 'fa-check' },
+                        ];
+
+                        const colours = [
+                          'bg-slate-300',   // past/done steps
+                          'bg-bergason-gold', // active step
+                          'bg-slate-100',   // future steps
+                        ];
+
+                        return (
+                          <div className="mt-2 flex items-center gap-0">
+                            {steps.map((s, i) => {
+                              const done = i < step;
+                              const active = i === step;
+                              const future = i > step;
+                              return (
+                                <div key={i} className="flex items-center" style={{ flex: i < 4 ? 1 : 'none' }}>
+                                  <div className="flex flex-col items-center gap-0.5" style={{ minWidth: 32 }}>
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold transition-colors ${
+                                      done ? 'bg-blue-500 text-white' :
+                                      active ? 'bg-bergason-gold text-bergason-navy' :
+                                      'bg-slate-100 text-slate-300'
+                                    }`}>
+                                      <i className={`fas ${done ? 'fa-check' : s.icon}`}></i>
+                                    </div>
+                                    <span className={`text-[8px] font-bold uppercase tracking-wide ${
+                                      done ? 'text-blue-500' : active ? 'text-bergason-gold' : 'text-slate-300'
+                                    }`}>{s.label}</span>
+                                  </div>
+                                  {i < 4 && (
+                                    <div className={`flex-1 h-0.5 mb-4 mx-0.5 transition-colors ${
+                                      i < step ? 'bg-blue-400' : 'bg-slate-100'
+                                    }`} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <i className="fas fa-chevron-right text-slate-200 group-hover:text-bergason-gold shrink-0"></i>
                   </div>
@@ -416,12 +491,22 @@ const InventoryEditor = () => {
   const [firestoreDoc, setFirestoreDoc] = useState<FirestoreInventory | null>(null);
   const [firestoreLoading, setFirestoreLoading] = useState(false);
 
+  // Warn if user tries to close tab or navigate away via browser controls
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   useEffect(() => {
     if (id) {
       const data = getInventoryById(id);
       if (data) {
         if (!data.rooms || data.rooms.length === 0) {
-          navigate('/');
+          navigate('/inventories');
           return;
         }
 
@@ -468,7 +553,7 @@ const InventoryEditor = () => {
             .finally(() => setFirestoreLoading(false));
         }
       } else {
-        navigate('/');
+        navigate('/inventories');
       }
     }
   }, [id, navigate]);
@@ -529,6 +614,41 @@ const InventoryEditor = () => {
       r.id === roomId
         ? { ...r, items: r.items.map(i => i.id === itemId ? { ...i, excluded: !i.excluded } : i) }
         : r
+    );
+    updateInventory({ rooms });
+  };
+
+  const toggleAllRoomItems = (roomId: string) => {
+    if (!inventory) return;
+    const room = inventory.rooms.find(r => r.id === roomId);
+    if (!room) return;
+    // If any item is currently visible, exclude all; if all excluded, include all
+    const anyVisible = room.items.some(i => !i.excluded);
+    const rooms = inventory.rooms.map(r =>
+      r.id === roomId
+        ? { ...r, items: r.items.map(i => ({ ...i, excluded: anyVisible })) }
+        : r
+    );
+    updateInventory({ rooms });
+  };
+
+  const toggleRoomPdfExcluded = (roomId: string) => {
+    if (!inventory) return;
+    const room = inventory.rooms.find(r => r.id === roomId);
+    if (!room) return;
+    const rooms = inventory.rooms.map(r =>
+      r.id === roomId ? { ...r, pdfExcluded: !r.pdfExcluded } : r
+    );
+    updateInventory({ rooms });
+  };
+
+  const toggleFloorGroupExcluded = (floorGroup: string) => {
+    if (!inventory) return;
+    // If any room in the group is NOT excluded, exclude all; otherwise include all
+    const groupRooms = inventory.rooms.filter(r => r.floorGroup === floorGroup);
+    const anyVisible = groupRooms.some(r => !r.pdfExcluded);
+    const rooms = inventory.rooms.map(r =>
+      r.floorGroup === floorGroup ? { ...r, pdfExcluded: anyVisible } : r
     );
     updateInventory({ rooms });
   };
@@ -627,10 +747,19 @@ const InventoryEditor = () => {
         <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm print:hidden">
           <div className="flex justify-between items-center px-4 py-3">
             <button
-              onClick={() => navigate('/')}
-              className="text-slate-500 hover:text-bergason-navy flex items-center gap-1 font-medium"
+              onClick={() => {
+                // Auto-save before leaving so nothing is lost
+                if (inventory) {
+                  const updated = { ...inventory, dateUpdated: Date.now() };
+                  const all = getInventories().map(i => i.id === updated.id ? updated : i);
+                  localStorage.setItem('bergason_inventories_v5', JSON.stringify(all));
+                  import('./services/inventory').then(m => m.saveDraftToFirestore(updated)).catch(() => {});
+                }
+                navigate('/inventories');
+              }}
+              className="text-slate-500 hover:text-bergason-navy flex items-center gap-1 font-medium text-sm"
             >
-              <i className="fas fa-chevron-left"></i> <span className="hidden xs:inline">Back</span>
+              <i className="fas fa-save mr-1"></i> <span className="hidden xs:inline">Save &amp; Exit</span><span className="xs:hidden">Exit</span>
             </button>
             <div className="font-serif font-bold text-bergason-navy text-lg truncate px-2">
               {inventory.address || 'New Inventory'}
@@ -965,19 +1094,38 @@ const InventoryEditor = () => {
             const isKitchen = room.name === "Kitchen";
             const activeIds = inventory.activeRoomIds;
             const isRoomActive = !activeIds || activeIds.includes(room.id);
+            const isRoomPdfExcluded = !!room.pdfExcluded;
 
-            // In preview/print mode, skip inactive rooms entirely
-            if (isPreviewMode && !isRoomActive) return null;
+            // In preview/print mode, skip pdf-excluded and inactive rooms entirely
+            if (isPreviewMode && (isRoomPdfExcluded || !isRoomActive)) return null;
 
             return (
               <div key={room.id} className="break-inside-avoid">
                 {showHeader && (
-                  <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest text-center mb-6 mt-8 print:mt-4">
-                    {room.floorGroup}
+                  <h2 className="text-xl font-bold bg-bergason-navy text-white p-2 uppercase tracking-widest mb-6 mt-8 print:mt-4 flex items-center justify-between px-4">
+                    <span>{room.floorGroup}</span>
+                    {!isPreviewMode && (
+                      <button
+                        onClick={e => { e.stopPropagation(); toggleFloorGroupExcluded(room.floorGroup!); }}
+                        title={inventory.rooms.filter(r => r.floorGroup === room.floorGroup).some(r => !r.pdfExcluded)
+                          ? 'Exclude all rooms in this floor from PDF'
+                          : 'Include all rooms in this floor in PDF'}
+                        className={`text-sm px-2.5 py-1 rounded transition-colors border-2 font-bold ${
+                          inventory.rooms.filter(r => r.floorGroup === room.floorGroup).some(r => !r.pdfExcluded)
+                            ? 'text-white border-white/40 hover:bg-white/20'
+                            : 'text-white/40 border-white/20 hover:text-white hover:border-white/40'
+                        }`}
+                      >
+                        <i className={`fas ${
+                          inventory.rooms.filter(r => r.floorGroup === room.floorGroup).some(r => !r.pdfExcluded)
+                            ? 'fa-eye' : 'fa-eye-slash'
+                        }`}></i>
+                      </button>
+                    )}
                   </h2>
                 )}
 
-                <div className={`border rounded-lg overflow-hidden mb-4 ${!isRoomActive ? 'border-slate-100' : 'border-slate-200'}`}>
+                <div className={`border rounded-lg overflow-hidden mb-4 ${isRoomPdfExcluded ? 'border-red-100 opacity-50' : !isRoomActive ? 'border-slate-100' : 'border-slate-200'}`}>
                   {/* Room Header — preview/print only */}
                   <div
                     className="flex justify-between items-center p-4 bg-slate-100 border-b border-slate-200"
@@ -988,6 +1136,25 @@ const InventoryEditor = () => {
                         <i className="fas fa-camera text-red-500 text-sm" title="This room has photos"></i>
                       )}
                     </h3>
+                    <div className="flex items-center gap-2">
+                      {!isPreviewMode && (
+                        <>
+                          {/* Single eye — toggles room excluded from PDF */}
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleRoomPdfExcluded(room.id); }}
+                            title={room.pdfExcluded ? 'Include this room in PDF' : 'Exclude entire room from PDF'}
+                            className={`text-sm px-2.5 py-1.5 rounded transition-colors border-2 font-bold ${
+                              room.pdfExcluded
+                                ? 'text-red-400 border-red-200 bg-red-50 hover:text-green-500 hover:border-green-200 hover:bg-green-50'
+                                : 'text-slate-500 border-slate-300 bg-white hover:text-red-400 hover:border-red-200 hover:bg-red-50'
+                            }`}
+                          >
+                            <i className={`fas ${room.pdfExcluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                          </button>
+                        </>
+                      )}
+                      <i className={`fas fa-chevron-down transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`}></i>
+                    </div>
                   </div>
 
                   {isExpanded && (
@@ -1060,15 +1227,6 @@ const InventoryEditor = () => {
                               <div className="col-span-2 font-bold text-slate-800 text-sm flex items-start gap-1">
                                 <span className="text-slate-400 font-mono text-xs">{roomIndex + 1}.{itemIndex + 1}</span>
                                 {item.name}
-                                {!isPreviewMode && (
-                                  <button
-                                    onClick={() => toggleItemExcluded(room.id, item.id)}
-                                    title={item.excluded ? 'Include item' : 'Exclude item'}
-                                    className={`ml-auto text-xs transition-colors ${item.excluded ? 'text-slate-300 hover:text-green-500' : 'text-slate-300 hover:text-red-400'}`}
-                                  >
-                                    <i className={`fas ${item.excluded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                                  </button>
-                                )}
                               </div>
 
                               <div className="col-span-4 space-y-2">
@@ -1313,43 +1471,34 @@ const InventoryEditor = () => {
           </h3>
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
             {inventory.documents.map(doc => (
-              <div key={doc.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 flex items-center justify-center rounded ${doc.fileData ? 'bg-red-100 text-red-500' : 'bg-slate-100 text-slate-400'}`}>
-                    <i className="far fa-file-pdf"></i>
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm text-slate-800">{doc.name}</div>
-                    {doc.uploadDate && <div className="text-[10px] text-slate-400">Uploaded {formatDate(doc.uploadDate)}</div>}
-                  </div>
+              <div key={doc.id} className="flex items-center justify-between py-1.5 px-2 bg-white border border-slate-100 rounded">
+                <div className="flex items-center gap-2 min-w-0">
+                  <i className={`far fa-file-pdf text-xs flex-shrink-0 ${doc.fileData ? 'text-red-400' : 'text-slate-300'}`}></i>
+                  <span className="text-xs text-slate-700 truncate">{doc.name}</span>
                 </div>
-                <div>
+                <div className="flex gap-1 flex-shrink-0 ml-2">
                   {doc.fileData ? (
-                    <div className="flex gap-2">
+                    <>
                       <button
                         onClick={() => window.open(doc.fileData!, '_blank')}
-                        className="text-xs bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded font-medium text-blue-600"
-                      >
-                        View
-                      </button>
+                        className="text-[10px] bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded font-medium text-blue-600"
+                      >View</button>
                       <a
                         href={doc.fileData}
                         download={doc.name}
-                        className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded font-medium text-slate-600"
-                      >
-                        Download
-                      </a>
+                        className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded font-medium text-slate-500"
+                      >Save</a>
                       {!isReadOnly && (
-                        <label className="cursor-pointer text-xs bg-white border border-slate-200 hover:border-bergason-gold hover:text-bergason-gold px-3 py-1 rounded font-medium text-slate-400">
+                        <label className="cursor-pointer text-[10px] bg-white border border-slate-200 hover:border-bergason-gold hover:text-bergason-gold px-2 py-0.5 rounded font-medium text-slate-400">
                           Replace
                           <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
                         </label>
                       )}
-                    </div>
+                    </>
                   ) : (
                     !isReadOnly && (
-                      <label className="cursor-pointer text-xs bg-bergason-navy text-white hover:bg-slate-800 px-3 py-1.5 rounded font-bold shadow-sm">
-                        <i className="fas fa-upload mr-1"></i> Upload
+                      <label className="cursor-pointer text-[10px] bg-bergason-navy text-white hover:bg-slate-800 px-2 py-0.5 rounded font-bold">
+                        <i className="fas fa-upload mr-1"></i>Upload
                         <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
                       </label>
                     )
@@ -1436,40 +1585,7 @@ const InventoryEditor = () => {
           </div>
 
 
-          {!isReadOnly && !inventory.tenantPresent && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-              <div>
-                <h4 className="font-bold text-amber-900 text-sm uppercase tracking-wide">Documents Provided to Tenant</h4>
-                <p className="text-xs text-amber-700 mt-0.5">Tenant was not present — confirm each document was provided at handover. Upload a copy to include it in the record.</p>
-              </div>
-              <div className="space-y-2">
-                {inventory.documents.map(doc => (
-                  <div key={doc.id} className="flex items-center justify-between p-2.5 bg-white border border-amber-100 rounded-lg shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${doc.fileData ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-300'}`}>
-                        <i className={`fas ${doc.fileData ? 'fa-check' : 'fa-minus'} text-[10px]`}></i>
-                      </div>
-                      <span className="text-sm text-slate-700 font-medium">{doc.name}</span>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      {doc.fileData && (
-                        <button
-                          onClick={() => window.open(doc.fileData!, '_blank')}
-                          className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded font-medium"
-                        >
-                          View
-                        </button>
-                      )}
-                      <label className="cursor-pointer text-xs bg-bergason-navy text-white hover:bg-slate-700 px-2 py-1 rounded font-medium">
-                        {doc.fileData ? 'Replace' : 'Upload'}
-                        <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => handleDocUpload(doc.id, e)} />
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           {!isReadOnly && (
             <div className="space-y-6">
@@ -1624,7 +1740,24 @@ const InventoryEditor = () => {
                   </>
                 ) : (
                   <div className="p-4 bg-green-50 border border-green-200 rounded-xl space-y-3">
-                    <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Submitted to Bergason — signed inventory sent</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-green-700"><i className="fas fa-check-circle mr-1"></i> Submitted to Bergason — signed inventory sent</p>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Re-enter tenant details and resend? This will create a new sign link.')) {
+                            setSignToken(null);
+                            setSentPdfUrl(null);
+                            setDispatchRef(null);
+                            setTenantName('');
+                            setTenantEmail('');
+                            setShowSignModal(true);
+                          }
+                        }}
+                        className="text-xs text-slate-400 hover:text-amber-600 border border-slate-200 hover:border-amber-300 px-2 py-1 rounded transition-colors"
+                      >
+                        <i className="fas fa-edit mr-1"></i> Edit &amp; Resend
+                      </button>
+                    </div>
                     {dispatchRef && (
                       <div className="bg-white border border-green-300 rounded-lg px-3 py-2">
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Dispatch Reference</p>
@@ -1807,7 +1940,6 @@ const InventoryEditor = () => {
                   </Button>
                 </div>
               ) : (
-                inventory.declarationAgreed && (
                   <div className="text-center">
                     <Button
                       onClick={() => {
@@ -1820,7 +1952,6 @@ const InventoryEditor = () => {
                       <i className="fas fa-lock mr-2"></i> Lock Inventory
                     </Button>
                   </div>
-                )
               )}
             </div>
           )}
@@ -1886,7 +2017,9 @@ const InventoryEditor = () => {
                             let pdfUrl: string | null = null;
                             let pdfBase64: string | undefined;
                             try {
-                              const pdfBlob = await captureElementAsPDF(reportRef.current);
+                              console.log('Starting PDF generation...');
+                              const pdfBlob = await generateInventoryPDF(inventory, bergasonLogo);
+                              console.log('PDF generated, size:', pdfBlob.size);
                               // Convert to base64 to send directly — avoids Storage download roundtrip
                               pdfBase64 = await new Promise<string>((resolve, reject) => {
                                 const reader = new FileReader();
@@ -1894,12 +2027,23 @@ const InventoryEditor = () => {
                                 reader.onerror = reject;
                                 reader.readAsDataURL(pdfBlob);
                               });
+                              console.log('PDF base64 length:', pdfBase64?.length);
+                              // If PDF base64 > 8MB, don't send inline — function will download from Storage
+                              if (pdfBase64 && pdfBase64.length > 8_000_000) {
+                                console.warn('PDF too large for inline send — will use Storage URL instead');
+                                pdfBase64 = undefined;
+                              }
                               setSendStatus('Uploading PDF...');
                               const storagePath = `pdfs/${token}/original.pdf`;
                               pdfUrl = await uploadPDFToStorage(pdfBlob, storagePath);
                               await updateTenantProgress(token, { originalPdfUrl: pdfUrl });
                             } catch (pdfErr) {
-                              console.warn('PDF generation/upload failed:', pdfErr);
+                              console.error('PDF generation/upload failed:', pdfErr);
+                              setSendStatus('');
+                              setSending(false);
+                              const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+                              alert(`PDF generation failed — the email was not sent.\n\nError: ${errMsg}\n\nPlease open browser console (F12) and check for the full error details, then send a screenshot to support.`);
+                              return;
                             }
 
                             setSendStatus('Sending confirmation email...');
@@ -2085,7 +2229,8 @@ const App = () => {
   return (
     <HashRouter>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<OfficePortal />} />
+        <Route path="/inventories" element={<Dashboard />} />
         <Route path="/inventory/:id" element={<InventoryEditor />} />
         <Route path="/sign/:token" element={<TenantSign />} />
         <Route path="/review/:token" element={<TenantReview />} />

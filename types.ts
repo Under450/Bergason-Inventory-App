@@ -58,6 +58,7 @@ export interface Room {
   name: string;
   floorGroup?: string;
   items: InventoryItem[];
+  pdfExcluded?: boolean;       // entire room hidden from PDF (header + all content)
 
   // Deposit evidence fields
   odourNotes?: string;         // smell at check-in — critical for smoking/pet claims

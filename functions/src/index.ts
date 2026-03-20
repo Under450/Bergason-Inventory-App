@@ -130,7 +130,7 @@ interface SendEmailRequest {
 
 export const sendInventoryEmail = functionsV1
   .region('europe-west2')
-  .runWith({ secrets: ['IONOS_PASSWORD'], timeoutSeconds: 60 })
+  .runWith({ secrets: ['IONOS_PASSWORD'], timeoutSeconds: 300, memory: '1GB' })
   .https.onRequest(async (req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -138,11 +138,24 @@ export const sendInventoryEmail = functionsV1
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
 
     const d = req.body as SendEmailRequest;
+    if (!d || typeof d !== 'object') {
+      console.error('Empty or unparseable body — request may have exceeded body size limit');
+      res.status(400).json({ error: 'Request body missing or too large. Try sending without PDF attachment.' }); return;
+    }
+
+    // If PDF is too large (>8MB base64 ≈ 6MB binary), drop it and send email without attachment
+    if (d.pdfBuffer && d.pdfBuffer.length > 8_000_000) {
+      console.warn(`PDF base64 too large (${d.pdfBuffer.length} chars) — sending email without attachment`);
+      d.pdfBuffer = undefined;
+    }
+
     const missing = ['tenantEmail', 'tenantName', 'address', 'firestoreToken'].filter(k => !d[k as keyof SendEmailRequest]);
     if (missing.length) {
       console.error('Missing required fields:', missing, 'body:', JSON.stringify(d));
       res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` }); return;
     }
+
+    try {
 
     const reference = generateReference(d.propertyId);
     const sentAt = new Date();
@@ -235,15 +248,16 @@ export const sendInventoryEmail = functionsV1
       firestoreUpdate = { reviewDispatchRef: reference };
 
     } else if (d.type === 'review_complete') {
-      pdfFilename = 'Bergason-TenantReview.pdf';
+      pdfFilename = 'Bergason-SignedInventory-WithReview.pdf';
       confirmationAction = 'Tenant completed review';
+      // Tenant email — thank you + their copy
       subject = `Your Completed Inventory Review — ${d.address} [Ref: ${reference}]`;
       html = `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
           ${headerHtml}
           <div style="padding:28px;background:#fff;border:1px solid #e2e8f0;">
             <p style="font-size:15px;color:#1e293b;">Dear ${d.tenantName},</p>
-            <p style="color:#475569;">Thank you for completing your inventory review for <strong>${d.address}</strong>. Your signed review report is attached.</p>
+            <p style="color:#475569;">Thank you for completing your inventory review for <strong>${d.address}</strong>. Your signed review report is attached for your records.</p>
             <p style="color:#475569;">If you raised any disputes, these have been recorded and Bergason Property Services will be in touch if further action is required.</p>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
             <p style="color:#94a3b8;font-size:12px;">Ref: <strong>${reference}</strong> · ${formatTimestamp(sentAt)}</p>
@@ -251,6 +265,19 @@ export const sendInventoryEmail = functionsV1
           ${footerHtml}
         </div>`;
       firestoreUpdate = { reviewPdfDispatchRef: reference };
+      // Office also gets the full PDF — set confirmationExtras with ref prominently
+      confirmationExtras = `<tr style="border-bottom:1px solid #bbf7d0;background:#fff9c4;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">Dispatch Ref</td>
+        <td style="padding:8px;"><strong style="font-size:16px;color:#0f172a;">${reference}</strong></td>
+      </tr>
+      <tr style="border-bottom:1px solid #bbf7d0;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">Status</td>
+        <td style="padding:8px;color:#166534;font-weight:bold;">✅ Review complete — full inventory PDF attached</td>
+      </tr>
+      <tr style="border-bottom:1px solid #bbf7d0;">
+        <td style="padding:8px;color:#64748b;font-weight:bold;">DPS Note</td>
+        <td style="padding:8px;color:#475569;">This PDF is the full signed inventory including tenant review. Suitable for submission to your Deposit Protection Scheme.</td>
+      </tr>`;
     }
 
     // Send tenant email
@@ -280,10 +307,21 @@ export const sendInventoryEmail = functionsV1
     await db.collection('dispatches').doc(reference).set(dispatchRecord);
     await db.collection('inventories').doc(d.firestoreToken)
       .collection('dispatches').add(dispatchRecord);
-    await db.collection('inventories').doc(d.firestoreToken)
-      .update({ ...firestoreUpdate });
+    // Use set+merge so this works even if the inventory doc doesn't exist in Firestore yet
+    if (Object.keys(firestoreUpdate).length > 0) {
+      await db.collection('inventories').doc(d.firestoreToken)
+        .set({ ...firestoreUpdate }, { merge: true });
+    }
 
     res.json({ success: true, reference });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : '';
+      console.error('sendInventoryEmail FAILED:', message);
+      console.error('Stack:', stack);
+      console.error('Request type:', d.type, '| Token:', d.firestoreToken, '| Email:', d.tenantEmail);
+      res.status(500).json({ error: message, type: d.type });
+    }
   }
 );
 
