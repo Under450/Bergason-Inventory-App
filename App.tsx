@@ -6,6 +6,7 @@ import TenantSign from './pages/TenantSign';
 import CheckOut from './pages/CheckOut';
 import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, getInventoryByToken, saveDisputeResponses, FirestoreInventory } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
+import { generateAdjudicatorPdf } from './services/checkoutPdf';
 import { uploadPDFToStorage } from './services/storage';
 import { sendInventoryEmail } from './services/email';
 import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureEntry, Photo } from './types';
@@ -1762,6 +1763,33 @@ const InventoryEditor = () => {
                     {firestoreDoc.status === 'checkout_complete' ? 'View Check-Out' : 'Start Check-Out →'}
                   </button>
                 </div>
+              )}
+
+              {/* Stage 5 — Export Adjudicator PDF */}
+              {firestoreDoc?.status === 'checkout_complete' && (
+                <button
+                  onClick={async () => {
+                    if (!firestoreDoc.tenancyStartDate || !firestoreDoc.tenancyEndDate) {
+                      alert('Please fill in Tenancy Start Date and Tenancy End Date before exporting.');
+                      return;
+                    }
+                    try {
+                      const blob = await generateAdjudicatorPdf(firestoreDoc);
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `adjudicator-${inventory.address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (err) {
+                      alert('PDF export failed. Please try again.');
+                      console.error(err);
+                    }
+                  }}
+                  className="w-full bg-[#0f172a] text-[#d4af37] font-bold py-3 rounded-xl text-sm mb-3"
+                >
+                  <i className="fas fa-file-export mr-2" />Export Adjudicator PDF
+                </button>
               )}
 
               {/* Lock / Unlock Inventory */}
