@@ -301,3 +301,17 @@ export const CLEANLINESS_ICONS: Record<string, string> = {
   "Poor": "text-orange-500",
   "Dirty": "text-red-600",
 };
+
+// Default descriptions pre-filled on item creation. Editable by inspector.
+export const DEFAULT_DESCRIPTIONS: Record<string, string> = {
+  "Skirting Boards": "Painted white gloss",
+  "Ceiling": "White emulsion",
+  "Door & Frame": "Painted white gloss",
+  "Walls": "Painted white/magnolia emulsion",
+  "Carpet": "Fitted carpet",
+  "Windows & Sills": "UPVC double glazed",
+  "Flooring": "Engineered wood / laminate",
+  "Worktops": "Laminate / stone effect",
+  "Wall tiles": "Ceramic tiles",
+  "Splashbacks": "Ceramic / glass",
+};

@@ -29,7 +29,8 @@ import {
   GUIDANCE_NOTES,
   DECLARATION_TEXT,
   PROPERTY_TYPES,
-  getExcludedRooms
+  getExcludedRooms,
+  DEFAULT_DESCRIPTIONS
 } from './constants';
 
 // --- Services ---
@@ -135,7 +136,7 @@ const Dashboard = () => {
             name: itemName,
             condition: Condition.GOOD,
             cleanliness: Cleanliness.GOOD,
-            description: '',
+            description: DEFAULT_DESCRIPTIONS[itemName] ?? '',
             photos: [],
             qualityTier: 'Standard',
             meterType: MeterType.STANDARD,
