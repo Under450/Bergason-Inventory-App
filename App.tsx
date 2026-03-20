@@ -11,6 +11,7 @@ import { Inventory, InventoryItem, Condition, Cleanliness, MeterType, SignatureE
 import { generateId, formatDate, formatDateTime } from './utils';
 import { uploadImage } from './services/cloudinary';
 import { Button } from './components/Button';
+import RoomWizard from './components/RoomWizard';
 import {
   PREDEFINED_ROOMS,
   DEFAULT_ITEMS,
@@ -388,8 +389,6 @@ const InventoryEditor = () => {
   const navigate = useNavigate();
   const [inventory, setInventory] = useState<Inventory | null>(null);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
-
   const reportRef = useRef<HTMLDivElement>(null);
   const [signerName, setSignerName] = useState("");
   const [signerType, setSignerType] = useState<string>("Bergason");
@@ -493,10 +492,6 @@ const InventoryEditor = () => {
         updateInventory({ rooms });
       }
     }
-  };
-
-  const toggleRoom = (roomId: string) => {
-    setExpandedRooms(prev => ({ ...prev, [roomId]: !prev[roomId] }));
   };
 
   const toggleRoomActive = (roomId: string) => {
@@ -883,11 +878,26 @@ const InventoryEditor = () => {
           </div>
         </section>
 
-        {/* 3. ROOMS GRID */}
-        <div className="space-y-4">
+        {/* 3. ROOMS WIZARD — edit mode only */}
+        {!isPreviewMode && (
+          <div className="mt-6 -mx-4 border-t border-slate-200">
+            <RoomWizard
+              rooms={inventory.rooms}
+              activeRoomIds={inventory.activeRoomIds ?? inventory.rooms.map(r => r.id)}
+              mode="checkin"
+              onItemUpdate={updateItem}
+              onToggleRoom={toggleRoomActive}
+              onToggleItem={toggleItemExcluded}
+              onAddPhoto={addPhoto}
+            />
+          </div>
+        )}
+
+        {/* 3. ROOMS GRID — preview/print mode only */}
+        {isPreviewMode && <div className="space-y-4">
           {inventory.rooms.map((room, roomIndex) => {
             const showHeader = roomIndex === 0 || inventory.rooms[roomIndex - 1].floorGroup !== room.floorGroup;
-            const isExpanded = isPreviewMode || expandedRooms[room.id];
+            const isExpanded = true;
             const isMeterRoom = room.name === "Meter Cupboard";
             const isKitchen = room.name === "Kitchen";
             const activeIds = inventory.activeRoomIds;
@@ -905,12 +915,9 @@ const InventoryEditor = () => {
                 )}
 
                 <div className={`border rounded-lg overflow-hidden mb-4 ${!isRoomActive ? 'border-slate-100' : 'border-slate-200'}`}>
-                  {/* Room Header */}
+                  {/* Room Header — preview/print only */}
                   <div
-                    onClick={() => !isPreviewMode && toggleRoom(room.id)}
-                    className={`flex justify-between items-center p-4 cursor-pointer transition-colors ${
-                      isExpanded ? 'bg-slate-100 border-b border-slate-200' : 'bg-white hover:bg-slate-50'
-                    }`}
+                    className="flex justify-between items-center p-4 bg-slate-100 border-b border-slate-200"
                   >
                     <h3 className="font-serif font-bold text-xl flex items-center gap-2 text-slate-900">
                       {roomIndex + 1}. {room.name}
@@ -918,22 +925,6 @@ const InventoryEditor = () => {
                         <i className="fas fa-camera text-red-500 text-sm" title="This room has photos"></i>
                       )}
                     </h3>
-                    <div className="flex items-center gap-2">
-                      {!isPreviewMode && (
-                        <button
-                          onClick={e => { e.stopPropagation(); toggleRoomActive(room.id); }}
-                          title={isRoomActive ? 'Exclude from tenant review' : 'Include in tenant review'}
-                          className={`text-sm px-2 py-1 rounded transition-colors ${
-                            isRoomActive
-                              ? 'text-slate-400 hover:text-red-400'
-                              : 'text-slate-300 hover:text-green-500'
-                          }`}
-                        >
-                          <i className={`fas ${isRoomActive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-                        </button>
-                      )}
-                      <i className={`fas fa-chevron-down transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`}></i>
-                    </div>
                   </div>
 
                   {isExpanded && (
@@ -1250,7 +1241,7 @@ const InventoryEditor = () => {
               </div>
             );
           })}
-        </div>
+        </div>}
 
         {/* 4. DOCUMENTS */}
         <section className="mt-16 break-inside-avoid">
