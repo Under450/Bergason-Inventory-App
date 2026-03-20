@@ -443,10 +443,6 @@ const OfficePortal: React.FC = () => {
                       If that email is registered, you'll receive a message with your password shortly. Check your inbox at <strong>{forgotEmail}</strong>.
                     </p>
                   </div>
-                  <div style={{ background:'#fef9c3', border:'1px solid #fde68a', borderRadius:8, padding:'12px 14px', marginBottom:20, fontSize:13, color:'#854d0e' }}>
-                    <strong>Your current password is: </strong>Bergason2026!<br/>
-                    <span style={{ fontSize:12, color:'#92400e' }}>Contact Craig to change it if needed.</span>
-                  </div>
                   <button onClick={() => setShowForgot(false)}
                     style={{ width:'100%', background:'#0f172a', color:'#fff', border:'none', padding:'11px', borderRadius:8, fontSize:14, fontWeight:700, cursor:'pointer' }}>
                     Back to sign in
