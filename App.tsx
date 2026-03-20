@@ -3,7 +3,7 @@ import bergasonLogo from './bergasonlogo.png';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
-import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress } from './services/inventory';
+import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, getInventoryByToken, saveDisputeResponses, FirestoreInventory } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { uploadPDFToStorage } from './services/storage';
 import { sendInventoryEmail } from './services/email';
@@ -411,6 +411,8 @@ const InventoryEditor = () => {
   const [reviewSentLink, setReviewSentLink] = useState<string | null>(null);
   const [reviewDispatchRef, setReviewDispatchRef] = useState<string | null>(null);
   const [moveInDateStr, setMoveInDateStr] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [firestoreDoc, setFirestoreDoc] = useState<FirestoreInventory | null>(null);
+  const [firestoreLoading, setFirestoreLoading] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -453,6 +455,15 @@ const InventoryEditor = () => {
           setDispatchRef(saved.dispatchRef ?? null);
           setReviewSentLink(saved.reviewSentLink ?? null);
           setReviewDispatchRef(saved.reviewDispatchRef ?? null);
+        }
+
+        // Fetch Firestore pipeline status (non-blocking)
+        if (saved?.signToken) {
+          setFirestoreLoading(true);
+          getInventoryByToken(saved.signToken)
+            .then(doc => setFirestoreDoc(doc))
+            .catch(() => {/* silently ignore — editor works from localStorage */})
+            .finally(() => setFirestoreLoading(false));
         }
       } else {
         navigate('/');
@@ -757,6 +768,56 @@ const InventoryEditor = () => {
               />
             </div>
           </div>
+
+          {/* Tenancy dates — required for adjudicator PDF */}
+          {firestoreDoc && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Tenancy Dates</h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-slate-600 block mb-1">Tenancy Start Date</label>
+                  <input
+                    type="date"
+                    value={firestoreDoc.tenancyStartDate ? new Date(firestoreDoc.tenancyStartDate).toISOString().split('T')[0] : ''}
+                    onChange={async e => {
+                      const ts = e.target.value ? new Date(e.target.value).getTime() : undefined;
+                      await updateTenantProgress(firestoreDoc.token, { tenancyStartDate: ts } as Partial<FirestoreInventory>);
+                      setFirestoreDoc(prev => prev ? { ...prev, tenancyStartDate: ts } : prev);
+                    }}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600 block mb-1">Tenancy End Date</label>
+                  <input
+                    type="date"
+                    value={firestoreDoc.tenancyEndDate ? new Date(firestoreDoc.tenancyEndDate).toISOString().split('T')[0] : ''}
+                    onChange={async e => {
+                      const ts = e.target.value ? new Date(e.target.value).getTime() : undefined;
+                      await updateTenantProgress(firestoreDoc.token, { tenancyEndDate: ts } as Partial<FirestoreInventory>);
+                      setFirestoreDoc(prev => prev ? { ...prev, tenancyEndDate: ts } : prev);
+                    }}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600 block mb-1">Check-In Date</label>
+                  <input
+                    type="date"
+                    value={firestoreDoc.checkInDate
+                      ? new Date(firestoreDoc.checkInDate).toISOString().split('T')[0]
+                      : new Date(inventory.dateCreated).toISOString().split('T')[0]}
+                    onChange={async e => {
+                      const ts = e.target.value ? new Date(e.target.value).getTime() : undefined;
+                      await updateTenantProgress(firestoreDoc.token, { checkInDate: ts } as Partial<FirestoreInventory>);
+                      setFirestoreDoc(prev => prev ? { ...prev, checkInDate: ts } : prev);
+                    }}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Pre-tenancy professional clean */}
           <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-xl">
@@ -1624,6 +1685,81 @@ const InventoryEditor = () => {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Stage 4 — Dispute Response Panel */}
+              {firestoreDoc && ['completed', 'dispute_review', 'checkout_in_progress', 'checkout_complete'].includes(firestoreDoc.status) && (() => {
+                const disputedItems = inventory.rooms.flatMap(room =>
+                  room.items
+                    .filter(item => firestoreDoc.tenantReview?.[item.id] && !firestoreDoc.tenantReview[item.id].agreed)
+                    .map(item => ({ item, room, review: firestoreDoc.tenantReview[item.id] }))
+                );
+                if (disputedItems.length === 0) return null;
+                return (
+                  <div className="mt-6 border border-amber-200 rounded-xl overflow-hidden">
+                    <div className="bg-amber-50 px-4 py-3 border-b border-amber-200">
+                      <h3 className="font-bold text-amber-900 text-sm">Review Tenant Disputes ({disputedItems.length})</h3>
+                      <p className="text-amber-700 text-xs mt-0.5">Review each dispute. Charges are assigned at check-out only.</p>
+                    </div>
+                    <div className="divide-y divide-amber-100">
+                      {disputedItems.map(({ item, room, review }) => {
+                        const existing = firestoreDoc.agentDisputeResponse?.[item.id];
+                        return (
+                          <div key={item.id} className="px-4 py-3 bg-white">
+                            <div className="flex justify-between items-start mb-1">
+                              <div>
+                                <span className="font-semibold text-sm text-slate-900">{item.name}</span>
+                                <span className="text-xs text-slate-400 ml-2">{room.name}</span>
+                              </div>
+                              {existing && (
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${existing.accepted ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {existing.accepted ? 'ACCEPTED' : 'IN DISPUTE'}
+                                </span>
+                              )}
+                            </div>
+                            {review.comment && <p className="text-xs text-slate-600 mb-2 bg-amber-50 rounded p-2">"{review.comment}"</p>}
+                            {!existing && (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={async () => {
+                                    const updated = { ...firestoreDoc.agentDisputeResponse, [item.id]: { respondedAt: Date.now(), accepted: true } };
+                                    await saveDisputeResponses(firestoreDoc.token, updated);
+                                    setFirestoreDoc(prev => prev ? { ...prev, agentDisputeResponse: updated } : prev);
+                                  }}
+                                  className="flex-1 bg-green-50 border border-green-300 text-green-800 text-xs font-bold py-2 rounded-lg"
+                                >
+                                  I Accept — amend record
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    const updated = { ...firestoreDoc.agentDisputeResponse, [item.id]: { respondedAt: Date.now(), accepted: false } };
+                                    await saveDisputeResponses(firestoreDoc.token, updated);
+                                    setFirestoreDoc(prev => prev ? { ...prev, agentDisputeResponse: updated } : prev);
+                                  }}
+                                  className="flex-1 bg-red-50 border border-red-300 text-red-800 text-xs font-bold py-2 rounded-lg"
+                                >
+                                  I Reject — leave for DPS
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Stage 5 — Start Check-Out button */}
+              {firestoreDoc && ['completed', 'dispute_review', 'checkout_in_progress', 'checkout_complete'].includes(firestoreDoc.status) && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => navigate(`/checkout/${firestoreDoc.token}`)}
+                    className="w-full bg-[#0f172a] text-[#d4af37] font-bold py-3 rounded-xl text-sm"
+                  >
+                    {firestoreDoc.status === 'checkout_complete' ? 'View Check-Out' : 'Start Check-Out →'}
+                  </button>
                 </div>
               )}
 
