@@ -3,6 +3,7 @@ import bergasonLogo from './bergasonlogo.png';
 import { HashRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import TenantReview from './pages/TenantReview';
 import TenantSign from './pages/TenantSign';
+import CheckOut from './pages/CheckOut';
 import { saveInventoryToFirestore, activateReviewLink, updateTenantProgress, getInventoryByToken, saveDisputeResponses, FirestoreInventory } from './services/inventory';
 import { captureElementAsPDF } from './services/pdf';
 import { uploadPDFToStorage } from './services/storage';
@@ -2060,6 +2061,7 @@ const App = () => {
         <Route path="/inventory/:id" element={<InventoryEditor />} />
         <Route path="/sign/:token" element={<TenantSign />} />
         <Route path="/review/:token" element={<TenantReview />} />
+        <Route path="/checkout/:token" element={<CheckOut />} />
       </Routes>
     </HashRouter>
   );
