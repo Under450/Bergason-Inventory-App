@@ -12,12 +12,61 @@ export interface TenantReviewData {
   [itemId: string]: ItemReview;
 }
 
+export type CheckOutChargeType = 'beyond_fwt' | 'repair' | 'replace' | 'missing' | 'left_behind';
+export type CheckOutResponsibility = 'tenant' | 'landlord';
+
+export interface AgentDisputeResponse {
+  [itemId: string]: {
+    respondedAt: number;
+    accepted: boolean;
+    notes?: string;
+  };
+}
+
+export interface CheckOutItemResult {
+  changed: boolean;
+  chargeType?: CheckOutChargeType;
+  responsibility?: CheckOutResponsibility;
+  estimatedCost?: number;
+  notes?: string;
+  photos?: string[];
+}
+
+export interface CheckOutNewItem {
+  id: string;
+  name: string;
+  roomId: string;
+  chargeType: CheckOutChargeType;
+  responsibility: CheckOutResponsibility;
+  estimatedCost?: number;
+  notes?: string;
+  photos?: string[];
+}
+
+export interface CheckOutData {
+  checkOutDate: number;
+  inspectorName: string;
+  tenantPresent: boolean;
+  tenantRefusedToSign?: boolean;
+  tenantSignatureData?: string;
+  cleaningStandard?: 'professional' | 'domestic' | 'good' | 'fair' | 'poor' | 'dirty';
+  meterReadings?: {
+    gas?:      { reading: string; photo?: string };
+    electric?: { reading: string; photo?: string };
+    water?:    { reading: string; photo?: string };
+  };
+  keysReturned?: { count: number; notes?: string };
+  items: { [itemId: string]: CheckOutItemResult };
+  newItems?: CheckOutNewItem[];
+}
+
 export interface FirestoreInventory {
   inventory: Inventory;
   token: string;
   tenantEmail: string;
   tenantName: string;
-  status: 'pending_signature' | 'signed' | 'review_sent' | 'reviewing' | 'completed' | 'expired';
+  status: 'pending_signature' | 'signed' | 'review_sent' | 'reviewing' | 'completed' | 'expired'
+         | 'dispute_review' | 'checkout_in_progress' | 'checkout_complete';
   createdAt: number;
 
   // Stage 1 — Pre-move-in signature
@@ -48,6 +97,16 @@ export interface FirestoreInventory {
   tenantReviewCompletedAt?: number;
   reviewPdfUrl?: string;         // PDF 2 — combined tenant review report
   reviewPdfDispatchRef?: string;
+
+  // Stage 4 — Agent dispute response
+  agentDisputeResponse?: AgentDisputeResponse;
+
+  // Stage 5 — Check-out
+  tenancyStartDate?: number;
+  tenancyEndDate?: number;
+  checkInDate?: number;
+  checkOutData?: CheckOutData;
+  checkOutPdfUrl?: string;
 }
 
 /** Called when inspector clicks "Send for Signature" — Stage 1 */
@@ -102,4 +161,24 @@ export const updateTenantProgress = async (
   updates: Partial<FirestoreInventory>
 ): Promise<void> => {
   await updateDoc(doc(db, 'inventories', token), updates as Record<string, unknown>);
+};
+
+/** Saves checkOutData to Firestore — called from CheckOut page */
+export const saveCheckOutData = async (
+  token: string,
+  checkOutData: CheckOutData,
+  status: 'checkout_in_progress' | 'checkout_complete'
+): Promise<void> => {
+  await updateDoc(doc(db, 'inventories', token), { checkOutData, status });
+};
+
+/** Saves agent dispute responses to Firestore */
+export const saveDisputeResponses = async (
+  token: string,
+  agentDisputeResponse: AgentDisputeResponse
+): Promise<void> => {
+  await updateDoc(doc(db, 'inventories', token), {
+    agentDisputeResponse,
+    status: 'dispute_review'
+  });
 };
